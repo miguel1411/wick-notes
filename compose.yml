@@ -1,6 +1,6 @@
 name: wick-notes
 
-# Sin login todavía: web y colaboración se publican solo en esta máquina.
+# Por defecto web y colaboración se publican solo en esta máquina.
 # Para abrirlas a tu red local pon BIND_ADDRESS=0.0.0.0 en .env (ver README).
 
 x-app: &app
@@ -51,6 +51,7 @@ services:
       PORT: 3000
       NUXT_PUBLIC_COLLAB_URL: ${NUXT_PUBLIC_COLLAB_URL:-}
       NUXT_PUBLIC_COLLAB_PORT: ${COLLAB_PORT:-3121}
+      NUXT_TRUST_PROXY: ${NUXT_TRUST_PROXY:-false}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3120}:3000"
     healthcheck:

@@ -4,16 +4,13 @@ export interface DocumentSummary {
   title: string
   createdAt: string
   updatedAt: string
-}
-
-function errorMessage(err: unknown): string {
-  const e = err as { data?: { statusMessage?: string; message?: string }; statusMessage?: string; message?: string }
-  return e?.data?.statusMessage ?? e?.statusMessage ?? e?.data?.message ?? e?.message ?? 'Error inesperado'
+  createdBy: { id: string; name: string } | null
 }
 
 /** Lista de documentos compartida por toda la app y operaciones sobre ella. */
 export function useDocuments() {
   const toast = useToast()
+  const { handleUnauthorized } = useAuth()
   const { data, refresh, status } = useFetch<DocumentSummary[]>('/api/documents', {
     key: 'documents',
     default: () => [],
@@ -23,7 +20,8 @@ export function useDocuments() {
     try {
       return await action()
     } catch (err) {
-      toast.add({ title: failTitle, description: errorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
+      if (apiErrorStatus(err) === 401) await handleUnauthorized()
+      else toast.add({ title: failTitle, description: apiErrorMessage(err), color: 'error', icon: 'i-lucide-circle-alert' })
       return undefined
     }
   }

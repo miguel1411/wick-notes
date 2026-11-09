@@ -1,6 +1,15 @@
 import { Database } from '@hocuspocus/extension-database'
 import { Server } from '@hocuspocus/server'
-import { documentExists, loadYjsState, NotFoundError, saveYjsState } from '@wick/core'
+import {
+  canAccessDocument,
+  loadYjsState,
+  NotFoundError,
+  readSessionCookie,
+  saveYjsState,
+  UnauthorizedError,
+  validateSession,
+  type AuthUser,
+} from '@wick/core'
 
 export interface CollabServerOptions {
   port: number
@@ -12,15 +21,20 @@ export interface CollabServerOptions {
   quiet?: boolean
 }
 
+/** Contexto de cada conexión: quién está conectado. */
+export interface CollabContext {
+  user: AuthUser
+}
+
 /**
  * Servidor de colaboración en tiempo real.
  *
  * El nombre del documento Yjs es el id del documento en la base de datos.
- * El estado Yjs se carga y se guarda a través de @wick/core, igual que hará
- * cualquier otra interfaz (API, CLI, MCP).
+ * Cada conexión se autentica con la misma cookie de sesión que la web (el navegador
+ * la envía al abrir el WebSocket en el mismo host) y se autoriza con @wick/core.
  */
 export function createCollabServer(options: CollabServerOptions) {
-  return new Server({
+  return new Server<CollabContext>({
     port: options.port,
     address: options.address,
     quiet: options.quiet ?? true,
@@ -29,12 +43,11 @@ export function createCollabServer(options: CollabServerOptions) {
     debounce: options.debounce ?? 2000,
     maxDebounce: options.maxDebounce ?? 10000,
 
-    // Solo se puede colaborar sobre documentos que existen.
-    // (La autenticación por usuario llegará en el siguiente paso.)
-    async onConnect({ documentName }) {
-      if (!(await documentExists(documentName))) {
-        throw new NotFoundError('Documento')
-      }
+    async onConnect({ documentName, requestHeaders, context }) {
+      const session = await validateSession(readSessionCookie(requestHeaders.get('cookie')))
+      if (!session) throw new UnauthorizedError()
+      if (!(await canAccessDocument(session.user, documentName))) throw new NotFoundError('Documento')
+      context.user = session.user
     },
 
     extensions: [

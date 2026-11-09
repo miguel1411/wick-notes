@@ -7,13 +7,50 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  /// Siempre en minúsculas; es lo que se escribe para iniciar sesión.
+  username     String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(MEMBER)
+  /// Las cuentas no se borran (conservan la autoría); se desactivan.
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions  Session[]
+  documents Document[] @relation("DocumentCreatedBy")
+}
+
+model Session {
+  /// SHA-256 del token de la cookie. El token en claro nunca se guarda.
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  userAgent  String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model Document {
-  id        String   @id @default(cuid())
-  title     String
+  id          String   @id @default(cuid())
+  title       String
   /// Estado Yjs codificado (Y.encodeStateAsUpdate). Fuente de verdad del contenido.
-  yjsState  Bytes?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  yjsState    Bytes?
+  createdById String?
+  createdBy   User?    @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([updatedAt])
 }

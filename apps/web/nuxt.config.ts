@@ -10,6 +10,8 @@ export default defineNuxtConfig({
   icon: { provider: 'server', serverBundle: 'local', fallbackToApi: false, clientBundle: { scan: true } },
 
   runtimeConfig: {
+    // true si hay un proxy inverso delante: se usan sus cabeceras X-Forwarded-* (IP, host, https).
+    trustProxy: false,
     public: {
       // URL del WebSocket de colaboración. Vacía = mismo host que la web en collabPort.
       collabUrl: '',
@@ -17,7 +19,7 @@ export default defineNuxtConfig({
     },
   },
 
-  // Sin login todavía: en desarrollo solo se escucha en esta máquina, salvo que
+  // En desarrollo solo se escucha en esta máquina, salvo que
   // DEV_HOST (en .env) indique otra interfaz concreta, p. ej. la IP de Tailscale.
   devServer: { port: 3120, host: process.env.DEV_HOST || '127.0.0.1' },
 

@@ -1,4 +1,6 @@
 export interface CollabIdentity {
+  /** Id de la cuenta: permite agrupar varias pestañas de la misma persona. */
+  userId: string
   name: string
   color: string
 }
@@ -6,36 +8,24 @@ export interface CollabIdentity {
 /** Otro colaborador conectado al mismo documento. */
 export interface Peer {
   clientId: number
+  userId: string
   name: string
   color: string
 }
 
 export type SyncStatus = 'connecting' | 'syncing' | 'synced' | 'offline' | 'unavailable'
 
-const NAMES = ['Búho', 'Zorro', 'Lince', 'Nutria', 'Garza', 'Tejón', 'Halcón', 'Ciervo', 'Colibrí', 'Ardilla']
-const COLORS = ['#e11d48', '#d97706', '#16a34a', '#0891b2', '#2563eb', '#7c3aed', '#c026d3', '#ea580c']
-const STORAGE_KEY = 'wick:identity'
+const COLORS = ['#e11d48', '#d97706', '#16a34a', '#0891b2', '#2563eb', '#7c3aed', '#c026d3', '#ea580c', '#0d9488', '#65a30d']
 
-const pick = <T>(list: T[]): T => list[Math.floor(Math.random() * list.length)]!
+/** Color estable para cada usuario (el mismo en avatares y cursores, en todas las pestañas). */
+export function userColor(userId: string): string {
+  let h = 0
+  for (const ch of userId) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return COLORS[h % COLORS.length]!
+}
 
-/**
- * Nombre y color con los que este navegador aparece ante otros colaboradores.
- * Provisional hasta que existan usuarios: se recuerda en el navegador si se puede.
- */
-export function getCollabIdentity(): CollabIdentity {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as CollabIdentity | null
-    if (saved?.name && saved?.color) return saved
-  } catch {
-    // Almacenamiento no disponible: se usa una identidad nueva en cada visita.
-  }
-  const identity = { name: `${pick(NAMES)} anónimo`, color: pick(COLORS) }
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(identity))
-  } catch {
-    // Ignorado a propósito.
-  }
-  return identity
+export function collabIdentity(user: { id: string; name: string }): CollabIdentity {
+  return { userId: user.id, name: user.name, color: userColor(user.id) }
 }
 
 /** URL del servidor de colaboración vista desde el navegador. */

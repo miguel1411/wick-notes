@@ -36,7 +36,9 @@ let crepe: Crepe | undefined
 
 onMounted(async () => {
   const config = useRuntimeConfig()
-  const identity = getCollabIdentity()
+  const auth = useAuth()
+  if (!auth.user.value) return
+  const identity = collabIdentity(auth.user.value)
 
   ydoc = new Y.Doc()
   provider = new HocuspocusProvider({
@@ -57,22 +59,26 @@ onMounted(async () => {
   provider.on('unsyncedChanges', ({ number }: { number: number }) => {
     unsynced.value = number
   })
-  provider.on('authenticationFailed', () => {
-    unavailable.value = true
+  // El servidor rechaza la conexión si la sesión ya no vale o si la nota no existe.
+  provider.on('authenticationFailed', async () => {
     provider?.destroy()
+    const state = await auth.refresh().catch(() => null)
+    if (state && !state.user) await auth.handleUnauthorized()
+    else unavailable.value = true
   })
 
   const awareness = provider.awareness
   const emitPeers = () => {
     if (!awareness) return
-    const peers: Peer[] = []
+    // Una entrada por persona, aunque tenga la nota abierta en varias pestañas.
+    const peers = new Map<string, Peer>()
     awareness.getStates().forEach((state, clientId) => {
-      const user = state.user as { name?: string; color?: string } | undefined
-      if (clientId !== awareness.clientID && user?.name) {
-        peers.push({ clientId, name: user.name, color: user.color ?? '#888' })
-      }
+      const user = state.user as Partial<CollabIdentity> | undefined
+      if (clientId === awareness.clientID || !user?.name || !user.userId) return
+      if (user.userId === identity.userId || peers.has(user.userId)) return
+      peers.set(user.userId, { clientId, userId: user.userId, name: user.name, color: user.color ?? '#888' })
     })
-    emit('peers', peers)
+    emit('peers', [...peers.values()])
   }
   awareness?.on('change', emitPeers)
 
@@ -114,12 +120,25 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  provider?.destroy()
-  crepe?.destroy()
-  ydoc?.destroy()
-  provider = undefined
-  crepe = undefined
-  ydoc = undefined
+  const editor = crepe
+  const p = provider
+  const d = ydoc
+  crepe = provider = ydoc = undefined
+
+  // Orden importante: crepe.destroy() es asíncrono y, mientras termina, los plugins de
+  // Yjs (sincronía y cursores) seguirían enviando cambios a un editor medio destruido.
+  // 1) Desenganchar la colaboración del editor, 2) cerrar conexión y documento Yjs,
+  // 3) destruir el editor.
+  if (ready.value) {
+    try {
+      editor?.editor.action((ctx) => ctx.get(collabServiceCtx).disconnect())
+    } catch {
+      // El editor ya no está disponible: no hay nada que desenganchar.
+    }
+  }
+  p?.destroy()
+  d?.destroy()
+  void editor?.destroy()
 })
 </script>
 

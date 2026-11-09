@@ -1,6 +1,6 @@
 import { getPrisma, Prisma } from '@wick/db'
-import type { z } from 'zod'
-import { NotFoundError, ValidationError } from './errors'
+import { requireActor, type AuthUser } from './auth/actor'
+import { NotFoundError } from './errors'
 import {
   createDocumentInput,
   DEFAULT_TITLE,
@@ -9,6 +9,11 @@ import {
   type CreateDocumentInput,
   type RenameDocumentInput,
 } from './schemas'
+import { parse } from './validation'
+
+// Permisos: por ahora cualquier usuario con sesión ve y edita todas las notas.
+// Cada operación recibe `actor` para que, cuando lleguen los espacios de trabajo,
+// las reglas se añadan aquí y valgan igual para web, CLI y MCP.
 
 /** Metadatos de un documento, sin el estado Yjs (que puede ser grande). */
 export interface DocumentSummary {
@@ -16,35 +21,37 @@ export interface DocumentSummary {
   title: string
   createdAt: Date
   updatedAt: Date
+  createdBy: { id: string; name: string } | null
 }
 
-const summarySelect = { id: true, title: true, createdAt: true, updatedAt: true } as const
-
-function parse<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
-  const result = schema.safeParse(value)
-  if (!result.success) {
-    throw new ValidationError(result.error.issues[0]?.message ?? 'Datos inválidos', result.error.issues)
-  }
-  return result.data
-}
+const summarySelect = {
+  id: true,
+  title: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: { select: { id: true, name: true } },
+} as const
 
 function isNotFound(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'
 }
 
-export async function listDocuments(): Promise<DocumentSummary[]> {
+export async function listDocuments(actor: AuthUser): Promise<DocumentSummary[]> {
+  requireActor(actor)
   return getPrisma().document.findMany({ select: summarySelect, orderBy: { updatedAt: 'desc' } })
 }
 
-export async function createDocument(input: CreateDocumentInput = {}): Promise<DocumentSummary> {
+export async function createDocument(actor: AuthUser, input: CreateDocumentInput = {}): Promise<DocumentSummary> {
+  requireActor(actor)
   const data = parse(createDocumentInput, input)
   return getPrisma().document.create({
-    data: { title: data.title ?? DEFAULT_TITLE },
+    data: { title: data.title ?? DEFAULT_TITLE, createdById: actor.id },
     select: summarySelect,
   })
 }
 
-export async function getDocument(id: string): Promise<DocumentSummary> {
+export async function getDocument(actor: AuthUser, id: string): Promise<DocumentSummary> {
+  requireActor(actor)
   const doc = await getPrisma().document.findUnique({
     where: { id: parse(documentIdSchema, id) },
     select: summarySelect,
@@ -53,14 +60,20 @@ export async function getDocument(id: string): Promise<DocumentSummary> {
   return doc
 }
 
-export async function documentExists(id: string): Promise<boolean> {
+/** ¿Existe el documento y puede abrirlo este usuario? */
+export async function canAccessDocument(actor: AuthUser, id: string): Promise<boolean> {
+  requireActor(actor)
   const parsed = documentIdSchema.safeParse(id)
   if (!parsed.success) return false
-  const count = await getPrisma().document.count({ where: { id: parsed.data } })
-  return count > 0
+  return (await getPrisma().document.count({ where: { id: parsed.data } })) > 0
 }
 
-export async function renameDocument(id: string, input: RenameDocumentInput): Promise<DocumentSummary> {
+export async function renameDocument(
+  actor: AuthUser,
+  id: string,
+  input: RenameDocumentInput,
+): Promise<DocumentSummary> {
+  requireActor(actor)
   const data = parse(renameDocumentInput, input)
   try {
     return await getPrisma().document.update({
@@ -74,7 +87,8 @@ export async function renameDocument(id: string, input: RenameDocumentInput): Pr
   }
 }
 
-export async function deleteDocument(id: string): Promise<void> {
+export async function deleteDocument(actor: AuthUser, id: string): Promise<void> {
+  requireActor(actor)
   try {
     await getPrisma().document.delete({ where: { id: parse(documentIdSchema, id) } })
   } catch (err) {
@@ -83,7 +97,10 @@ export async function deleteDocument(id: string): Promise<void> {
   }
 }
 
-/** Estado Yjs guardado, o null si el documento aún no tiene contenido. */
+/**
+ * Estado Yjs guardado, o null si el documento aún no tiene contenido.
+ * Sin `actor`: lo usa el servidor de colaboración tras autorizar la conexión.
+ */
 export async function loadYjsState(id: string): Promise<Uint8Array | null> {
   const doc = await getPrisma().document.findUnique({
     where: { id: parse(documentIdSchema, id) },
@@ -93,6 +110,7 @@ export async function loadYjsState(id: string): Promise<Uint8Array | null> {
   return doc.yjsState ? new Uint8Array(doc.yjsState) : null
 }
 
+/** Guarda el estado Yjs. Igual que loadYjsState, la autorización es de la conexión. */
 export async function saveYjsState(id: string, state: Uint8Array): Promise<void> {
   try {
     await getPrisma().document.update({

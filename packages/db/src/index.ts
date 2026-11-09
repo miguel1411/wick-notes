@@ -2,7 +2,8 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 
 export { Prisma, PrismaClient } from './generated/prisma/client'
-export type { Document } from './generated/prisma/client'
+export { Role } from './generated/prisma/client'
+export type { Document, Session, User } from './generated/prisma/client'
 
 export function createPrismaClient(connectionString = process.env.DATABASE_URL): PrismaClient {
   if (!connectionString) throw new Error('DATABASE_URL no está definida')

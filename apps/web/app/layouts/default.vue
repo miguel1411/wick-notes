@@ -1,7 +1,26 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 
 const { documents, createDocument } = useDocuments()
+const { user, isAdmin, logout } = useAuth()
+const colorMode = useColorMode()
+
+const userMenu = computed<DropdownMenuItem[][]>(() => [
+  [{ type: 'label', label: user.value?.name, description: `@${user.value?.username}` }],
+  [
+    { label: 'Mi cuenta', icon: 'i-lucide-user-cog', to: '/account' },
+    ...(isAdmin.value ? [{ label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/users' }] : []),
+    {
+      label: colorMode.value === 'dark' ? 'Tema claro' : 'Tema oscuro',
+      icon: colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon',
+      onSelect: (e: Event) => {
+        e.preventDefault()
+        colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
+      },
+    },
+  ],
+  [{ label: 'Cerrar sesión', icon: 'i-lucide-log-out', onSelect: () => logout() }],
+])
 
 const items = computed<NavigationMenuItem[]>(() =>
   documents.value.map((doc) => ({
@@ -45,7 +64,20 @@ const items = computed<NavigationMenuItem[]>(() =>
       </template>
 
       <template #footer="{ collapsed }">
-        <UColorModeButton :class="{ 'mx-auto': collapsed }" />
+        <UDropdownMenu v-if="user" :items="userMenu" :content="{ align: 'start', side: 'top' }" class="w-full">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            block
+            :square="collapsed"
+            :class="collapsed ? '' : 'justify-start'"
+            :aria-label="`Menú de ${user.name}`"
+          >
+            <UserAvatar :user="user" size="xs" />
+            <span v-if="!collapsed" class="truncate">{{ user.name }}</span>
+            <UIcon v-if="!collapsed" name="i-lucide-chevrons-up-down" class="ms-auto size-4 text-dimmed" />
+          </UButton>
+        </UDropdownMenu>
       </template>
     </UDashboardSidebar>
 
