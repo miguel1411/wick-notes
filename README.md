@@ -52,6 +52,30 @@ docker compose up -d --build
 Las migraciones se aplican solas y nunca borran datos. `docker compose down`
 conserva los datos; **`docker compose down -v` los elimina**.
 
+### Respaldos
+
+```bash
+scripts/backup.sh                          # → backups/wick-notes-AAAAMMDD-HHMMSS.dump
+scripts/backup.sh /srv/backups/wick --keep 14
+scripts/restore.sh backups/wick-notes-….dump
+```
+
+- El respaldo es la base de datos completa (`pg_dump`): notas con todo su
+  estado, usuarios y tokens. Se puede hacer con todo en marcha; solo quedan
+  fuera los últimos segundos que el servidor de colaboración aún no haya guardado.
+- Un respaldo solo se da por bueno si PostgreSQL puede leerlo. `--keep N` borra
+  los más antiguos de esa carpeta. Para hacerlo cada noche con cron:
+  `30 3 * * *  cd /ruta/a/wick-notes && scripts/backup.sh /srv/backups/wick --keep 14`
+- `restore.sh` **reemplaza todos los datos**. Antes guarda el estado actual en
+  `backups/antes-de-restaurar/`, para la web y la colaboración y restaura en una
+  sola transacción (si falla, no cambia nada). Después aplica migraciones y
+  cierra todas las sesiones, para que ningún navegador abierto vuelva a subir su
+  versión de las notas.
+- Guarda los respaldos **fuera de este servidor**. La carpeta `backups/` está en
+  `.gitignore`.
+- Para una copia portable en Markdown (sin usuarios ni historial):
+  `wick notes export --all -o carpeta`.
+
 ### Acceso desde la red
 
 Por defecto la web y la colaboración solo escuchan en la propia máquina. Para
