@@ -1,0 +1,28 @@
+{
+  "name": "@wick/cli",
+  "version": "0.1.0",
+  "description": "CLI de wick notes: tus notas desde la terminal",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wick": "dist/wick.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "tsx src/bin.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "vitest": "5.1.0"
+  }
+}

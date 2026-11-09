@@ -67,6 +67,17 @@ describe('documentos', () => {
     expect((await listDocuments(alice)).map((d) => d.id)).toEqual([first.id, second.id])
   })
 
+  it('filtra por título y limita resultados', async () => {
+    await createDocument(alice, { title: 'Backups de PostgreSQL' })
+    await createDocument(alice, { title: 'Red de casa' })
+    await createDocument(alice, { title: 'postgres en docker' })
+    expect((await listDocuments(alice, { query: 'POSTGRES' })).map((d) => d.title).sort()).toEqual([
+      'Backups de PostgreSQL',
+      'postgres en docker',
+    ])
+    expect(await listDocuments(alice, { limit: 1 })).toHaveLength(1)
+  })
+
   it('obtiene, renombra y borra', async () => {
     const doc = await createDocument(alice, { title: 'Original' })
     expect((await getDocument(alice, doc.id)).title).toBe('Original')

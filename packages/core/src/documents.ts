@@ -36,9 +36,21 @@ function isNotFound(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025'
 }
 
-export async function listDocuments(actor: AuthUser): Promise<DocumentSummary[]> {
+export interface ListDocumentsOptions {
+  /** Filtra por título (contiene, sin distinguir mayúsculas). */
+  query?: string
+  limit?: number
+}
+
+export async function listDocuments(actor: AuthUser, options: ListDocumentsOptions = {}): Promise<DocumentSummary[]> {
   requireActor(actor)
-  return getPrisma().document.findMany({ select: summarySelect, orderBy: { updatedAt: 'desc' } })
+  const query = options.query?.trim()
+  return getPrisma().document.findMany({
+    where: query ? { title: { contains: query, mode: 'insensitive' } } : undefined,
+    select: summarySelect,
+    orderBy: { updatedAt: 'desc' },
+    take: options.limit && options.limit > 0 ? Math.min(options.limit, 1000) : undefined,
+  })
 }
 
 /**

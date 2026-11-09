@@ -33,6 +33,15 @@ const form = reactive({ name: '', scope: 'read' as 'read' | 'write', expiresInDa
 const createError = ref('')
 const creating = ref(false)
 const newToken = ref<string | null>(null)
+const origin = import.meta.client ? window.location.origin : ''
+const cliCommands = computed(() =>
+  newToken.value
+    ? [
+        `curl -fsSL ${origin}/cli/wick.mjs -o ~/.local/bin/wick && chmod +x ~/.local/bin/wick`,
+        `wick login --server ${origin} --token ${newToken.value}`,
+      ].join('\n')
+    : '',
+)
 
 function openCreate() {
   Object.assign(form, { name: '', scope: 'read', expiresInDays: 90 })
@@ -147,6 +156,14 @@ async function confirmRevoke() {
         <div class="flex gap-2">
           <UInput :model-value="newToken" readonly class="flex-1 font-mono" aria-label="Token" @focus="($event.target as HTMLInputElement).select()" />
           <UButton icon="i-lucide-copy" label="Copiar" @click="copyToken" />
+        </div>
+        <div class="space-y-1.5 pt-2">
+          <p class="text-sm font-medium text-highlighted">Usarlo con la CLI (macOS y Linux, requiere Node 20+)</p>
+          <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs leading-relaxed"><code>{{ cliCommands }}</code></pre>
+          <p class="text-xs text-muted">
+            En Windows: descarga <a :href="`${origin}/cli/wick.mjs`" class="underline">wick.mjs</a> y ejecútalo con
+            <code>node wick.mjs login …</code>
+          </p>
         </div>
       </div>
       <form v-else id="create-token" class="space-y-4" @submit.prevent="submitCreate">

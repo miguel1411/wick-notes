@@ -100,6 +100,8 @@ pnpm dev                          # web en :3120 y colaboración en :3121 (solo 
 | Comando           | Para qué                                                     |
 |-------------------|--------------------------------------------------------------|
 | `pnpm dev`        | Web + colaboración con recarga en caliente                   |
+| `pnpm wick …`     | La CLI desde el código fuente                                |
+| `pnpm build`      | Compila la web y la CLI                                      |
 | `pnpm test`       | Tests de `core` y de colaboración (usan la BD `<nombre>_test`) |
 | `pnpm typecheck`  | Comprobación de tipos de todo el monorepo                    |
 | `pnpm db:migrate` | Crea una migración nueva tras cambiar `schema.prisma`        |
@@ -110,6 +112,7 @@ pnpm dev                          # web en :3120 y colaboración en :3121 (solo 
 apps/
   web/       Nuxt 4 + Nuxt UI: interfaz y API REST (/api/documents)
   collab/    Servidor Hocuspocus: sincroniza y guarda el estado Yjs
+  cli/       CLI `wick` (un único fichero sin dependencias: dist/wick.mjs)
 packages/
   core/      Reglas de negocio. Web, colaboración (y en el futuro CLI y MCP) pasan por aquí
   db/        Esquema Prisma, migraciones y cliente de PostgreSQL
@@ -131,6 +134,32 @@ curl -H "Authorization: Bearer wick_…" http://localhost:3120/api/documents
   con un token no se gestionan usuarios, contraseñas ni otros tokens.
 - Caducidad opcional; se revocan al momento desde la misma pantalla. Si se
   desactiva la cuenta, sus tokens dejan de funcionar. Solo se guarda su hash.
+
+### CLI (`wick`)
+
+Tus notas desde cualquier terminal (macOS, Linux, Windows; requiere Node 20+).
+La propia instancia sirve la CLI ya empaquetada, sin npm ni internet:
+
+```bash
+curl -fsSL http://servidor:3120/cli/wick.mjs -o ~/.local/bin/wick && chmod +x ~/.local/bin/wick
+wick login --server http://servidor:3120 --token wick_…   # token de Mi cuenta → Tokens de acceso
+```
+
+```bash
+wick notes list                         # recientes primero (--json para scripts)
+wick notes search postgres              # por título
+wick notes get "red de casa"            # por id, principio del id o título
+wick notes create "Nueva nota" "texto"  # o -f nota.md, o -f - para leer de stdin
+wick notes edit backups                 # abre $VISUAL/$EDITOR; avisa si alguien la cambió mientras tanto
+journalctl -n 50 | wick notes append "Incidencias" -f -
+wick notes export --all -o ./copia      # un .md por nota, con `# Título`
+wick notes import *.md
+```
+
+Al crear un token, la web muestra estos comandos ya rellenados. En Windows,
+descarga `wick.mjs` y ejecútalo con `node wick.mjs …`. La configuración se guarda
+en `~/.config/wick-notes/config.json` (permisos 600); también se pueden usar las
+variables `WICK_SERVER` y `WICK_TOKEN`. Desde el repositorio: `pnpm wick notes list`.
 
 ### Markdown
 
@@ -174,7 +203,7 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/tokens`          | Mis tokens de API (solo con sesión)  |
 | `POST`   | `/api/tokens`          | `{ name, scope: "read" \| "write", expiresInDays? }` → token (una vez) |
 | `DELETE` | `/api/tokens/:id`      | Revoca un token propio               |
-| `GET`    | `/api/documents`       | Lista, de la más reciente a la más antigua |
+| `GET`    | `/api/documents`       | Lista, de la más reciente a la más antigua (`?q=` título, `?limit=`) |
 | `POST`   | `/api/documents`       | Crea (`{ "title"?: string }`)        |
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |
 | `PATCH`  | `/api/documents/:id`   | Renombra (`{ "title": string }`)     |

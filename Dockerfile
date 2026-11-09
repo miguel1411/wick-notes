@@ -13,7 +13,8 @@ COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # prisma.config.ts exige DATABASE_URL incluso para generar; aquí no se conecta a nada.
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm --filter @wick/db generate \
-  && pnpm --filter @wick/web build
+  && pnpm --filter @wick/web build \
+  && pnpm --filter @wick/cli build
 
 FROM base AS runtime
 ENV NODE_ENV=production
