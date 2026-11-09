@@ -55,5 +55,38 @@ export function useDocuments() {
     return true
   }
 
-  return { documents: data, status, refresh, createDocument, renameDocument, deleteDocument }
+  /** Importa ficheros .md como notas nuevas y abre la última. */
+  async function importMarkdownFiles(files: File[]) {
+    const MAX = 2 * 1024 * 1024
+    let last: DocumentSummary | undefined
+    let imported = 0
+    for (const file of files) {
+      if (file.size > MAX) {
+        toast.add({ title: `«${file.name}» es demasiado grande`, description: 'El máximo es 2 MB.', color: 'error', icon: 'i-lucide-circle-alert' })
+        continue
+      }
+      const doc = await run(
+        async () =>
+          $fetch<DocumentSummary>('/api/documents/import', {
+            method: 'POST',
+            body: { markdown: await file.text(), filename: file.name },
+          }),
+        `No se pudo importar «${file.name}»`,
+      )
+      if (doc) {
+        last = doc
+        imported++
+      }
+    }
+    if (!last) return
+    await refresh()
+    toast.add({
+      title: imported === 1 ? `«${last.title}» importada` : `${imported} notas importadas`,
+      color: 'success',
+      icon: 'i-lucide-file-down',
+    })
+    await navigateTo(`/d/${last.id}`)
+  }
+
+  return { documents: data, status, refresh, createDocument, renameDocument, deleteDocument, importMarkdownFiles }
 }

@@ -19,9 +19,11 @@
     "@wick/core": "workspace:*",
     "@wick/db": "workspace:*",
     "nuxt": "4.6.4",
+    "ofetch": "1.5.1",
     "tailwindcss": "4.3.5",
     "vue": "^3.5.44",
-    "yjs": "13.6.33"
+    "yjs": "13.6.33",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "vue-tsc": "3.3.14"

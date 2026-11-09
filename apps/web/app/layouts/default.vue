@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 
-const { documents, createDocument } = useDocuments()
+const { documents, createDocument, importMarkdownFiles } = useDocuments()
+
+const fileInput = ref<HTMLInputElement>()
+async function onFilesSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  input.value = ''
+  if (files.length) await importMarkdownFiles(files)
+}
 const { user, isAdmin, logout } = useAuth()
 const colorMode = useColorMode()
 
@@ -42,15 +50,36 @@ const items = computed<NavigationMenuItem[]>(() =>
       </template>
 
       <template #default="{ collapsed }">
-        <UButton
-          icon="i-lucide-plus"
-          :label="collapsed ? undefined : 'Nueva nota'"
-          color="neutral"
-          variant="outline"
-          block
-          :square="collapsed"
-          @click="createDocument()"
-        />
+        <div class="flex gap-1.5" :class="{ 'flex-col': collapsed }">
+          <UButton
+            icon="i-lucide-plus"
+            :label="collapsed ? undefined : 'Nueva nota'"
+            color="neutral"
+            variant="outline"
+            block
+            :square="collapsed"
+            class="flex-1"
+            @click="createDocument()"
+          />
+          <UTooltip text="Importar Markdown (.md)">
+            <UButton
+              icon="i-lucide-file-up"
+              color="neutral"
+              variant="outline"
+              square
+              aria-label="Importar Markdown"
+              @click="fileInput?.click()"
+            />
+          </UTooltip>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+            multiple
+            class="hidden"
+            @change="onFilesSelected"
+          />
+        </div>
 
         <p v-if="!collapsed" class="px-2.5 pt-3 text-xs font-medium text-muted">Recientes</p>
         <UNavigationMenu

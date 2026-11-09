@@ -10,6 +10,7 @@ import {
   validateSession,
   type AuthUser,
 } from '@wick/core'
+import { handleInternalRequest } from './internal-api'
 
 export interface CollabServerOptions {
   port: number
@@ -42,6 +43,11 @@ export function createCollabServer(options: CollabServerOptions) {
     stopOnSignals: false,
     debounce: options.debounce ?? 2000,
     maxDebounce: options.maxDebounce ?? 10000,
+
+    // API HTTP interna (ver internal-api.ts). Lanzar null corta la respuesta por defecto.
+    async onRequest({ request, response, instance }) {
+      if (await handleInternalRequest(request, response, instance)) throw null
+    },
 
     async onConnect({ documentName, requestHeaders, context }) {
       const session = await validateSession(readSessionCookie(requestHeaders.get('cookie')))

@@ -12,6 +12,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // true si hay un proxy inverso delante: se usan sus cabeceras X-Forwarded-* (IP, host, https).
     trustProxy: false,
+    // URL interna del servidor de colaboración (Docker: http://collab:1234).
+    // Vacía en desarrollo: se usa DEV_HOST/127.0.0.1 y COLLAB_PORT.
+    collabInternalUrl: '',
     public: {
       // URL del WebSocket de colaboración. Vacía = mismo host que la web en collabPort.
       collabUrl: '',

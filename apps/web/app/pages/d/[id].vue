@@ -39,8 +39,16 @@ async function onDelete() {
   await navigateTo('/')
 }
 
-const menu: DropdownMenuItem[] = [
-  { label: 'Eliminar nota', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (confirmDelete.value = true) },
+const menu: DropdownMenuItem[][] = [
+  [
+    {
+      label: 'Descargar Markdown',
+      icon: 'i-lucide-file-down',
+      // La respuesta es un adjunto: el navegador lo descarga sin salir de la página.
+      onSelect: () => window.location.assign(`/api/documents/${id.value}/markdown?download=1`),
+    },
+  ],
+  [{ label: 'Eliminar nota', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (confirmDelete.value = true) }],
 ]
 </script>
 

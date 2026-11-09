@@ -1,5 +1,6 @@
-import { RateLimitedError, WickError } from '@wick/core'
+import { MAX_MARKDOWN_BYTES, RateLimitedError, ValidationError, WickError } from '@wick/core'
 import type { H3Event } from 'h3'
+import type { z } from 'zod'
 
 const STATUS: Record<WickError['code'], number> = {
   VALIDATION: 400,
@@ -41,4 +42,19 @@ export function requireId(event: H3Event): string {
 export async function readJson<T = Record<string, unknown>>(event: H3Event): Promise<T> {
   const body = await readBody(event).catch(() => null)
   return (body && typeof body === 'object' ? body : {}) as T
+}
+
+/** Valida con un esquema de @wick/core (errores como ValidationError → 400). */
+export function parseInput<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
+  const result = schema.safeParse(value)
+  if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Datos inválidos', result.error.issues)
+  return result.data
+}
+
+/** Rechaza cuerpos más grandes que un Markdown máximo antes de leerlos. */
+export function assertBodySize(event: H3Event) {
+  const length = Number(getRequestHeader(event, 'content-length') ?? 0)
+  if (length > MAX_MARKDOWN_BYTES + 64 * 1024) {
+    throw createError({ statusCode: 413, message: 'El contenido supera el tamaño máximo (2 MB)' })
+  }
 }

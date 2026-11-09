@@ -6,8 +6,8 @@ Base de conocimiento en Markdown, autoalojada y colaborativa. La visión complet
 está en [PRODUCT.md](PRODUCT.md).
 
 > **Estado:** en desarrollo. Ya hay usuarios con inicio de sesión, y se pueden
-> crear, renombrar y eliminar notas y editarlas entre varias personas en tiempo
-> real, con guardado automático. Todas las personas con cuenta ven y editan todas
+> crear, renombrar, eliminar, importar y exportar (Markdown) notas y editarlas
+> entre varias personas en tiempo real, con guardado automático. Todas las personas con cuenta ven y editan todas
 > las notas (los espacios de trabajo y permisos por nota llegarán después).
 
 ## Instalación (Docker Compose)
@@ -113,7 +113,26 @@ apps/
 packages/
   core/      Reglas de negocio. Web, colaboración (y en el futuro CLI y MCP) pasan por aquí
   db/        Esquema Prisma, migraciones y cliente de PostgreSQL
+  markdown/  Conversión Markdown ↔ Yjs con el mismo editor que la web (en un hilo aparte)
 ```
+
+### Markdown
+
+El formato de intercambio es Markdown (CommonMark + GFM: tablas, tareas,
+tachado; y fórmulas `$…$`). La conversión usa el mismo editor que la web
+(Milkdown Crepe) sobre un DOM simulado, dentro de un hilo del servidor de
+colaboración, así que lo que se exporta se vuelve a importar igual.
+
+- **Exportar:** menú «…» de la nota → *Descargar Markdown*. El fichero empieza
+  por `# Título`.
+- **Importar:** botón junto a *Nueva nota* (admite varios `.md`). Si el fichero
+  empieza por `# Algo`, eso pasa a ser el título; si no, el nombre del fichero.
+- **Escribir por la API** (`PUT /api/documents/:id/markdown`): se aplica sobre el
+  documento vivo calculando diferencias, así que no pisa lo que otras personas
+  estén escribiendo en ese momento.
+
+La web habla con el servidor de colaboración por una API interna protegida con
+un secreto derivado de `DATABASE_URL` (o `WICK_SERVICE_SECRET` si se define).
 
 El contenido de cada nota se guarda como estado **Yjs** (la fuente de verdad
 durante la edición). El servidor de colaboración lo guarda con 2 s de
@@ -140,6 +159,9 @@ peticiones que modifican datos desde un navegador deben venir del mismo origen.
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |
 | `PATCH`  | `/api/documents/:id`   | Renombra (`{ "title": string }`)     |
 | `DELETE` | `/api/documents/:id`   | Elimina                              |
+| `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |
+| `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append" }` |
+| `POST`   | `/api/documents/import` | Nota nueva desde `{ markdown, title?, filename? }` |
 
 ## Licencia
 

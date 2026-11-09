@@ -11,7 +11,7 @@
     "build": "pnpm --filter @wick/db generate && pnpm --filter @wick/web build",
     "db:migrate": "pnpm --filter @wick/db migrate:dev",
     "db:deploy": "pnpm --filter @wick/db migrate:deploy",
-    "test": "pnpm --filter @wick/db generate && pnpm --filter @wick/core --filter @wick/collab --workspace-concurrency=1 test",
+    "test": "pnpm --filter @wick/db generate && pnpm --filter @wick/markdown --filter @wick/core --filter @wick/collab --workspace-concurrency=1 test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {

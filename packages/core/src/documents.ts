@@ -41,11 +41,23 @@ export async function listDocuments(actor: AuthUser): Promise<DocumentSummary[]>
   return getPrisma().document.findMany({ select: summarySelect, orderBy: { updatedAt: 'desc' } })
 }
 
-export async function createDocument(actor: AuthUser, input: CreateDocumentInput = {}): Promise<DocumentSummary> {
+/**
+ * Crea una nota. `initialState` es el estado Yjs inicial (por ejemplo, de un
+ * Markdown importado); sin él, la nota empieza vacía.
+ */
+export async function createDocument(
+  actor: AuthUser,
+  input: CreateDocumentInput = {},
+  initialState?: Uint8Array,
+): Promise<DocumentSummary> {
   requireActor(actor)
   const data = parse(createDocumentInput, input)
   return getPrisma().document.create({
-    data: { title: data.title ?? DEFAULT_TITLE, createdById: actor.id },
+    data: {
+      title: data.title ?? DEFAULT_TITLE,
+      createdById: actor.id,
+      ...(initialState ? { yjsState: new Uint8Array(initialState) } : {}),
+    },
     select: summarySelect,
   })
 }
