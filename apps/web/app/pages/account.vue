@@ -46,7 +46,7 @@ async function onSubmit() {
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-lg space-y-6">
+      <div class="mx-auto w-full max-w-2xl space-y-6">
         <UCard>
           <div class="flex items-center gap-3">
             <UserAvatar v-if="user" :user="user" size="lg" />
@@ -79,6 +79,8 @@ async function onSubmit() {
             </div>
           </form>
         </UCard>
+
+        <ApiTokensCard />
       </div>
     </template>
   </UDashboardPanel>

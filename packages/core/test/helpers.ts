@@ -6,6 +6,7 @@ export async function resetDatabase() {
   const prisma = getPrisma()
   await prisma.document.deleteMany()
   await prisma.session.deleteMany()
+  await prisma.apiToken.deleteMany()
   await prisma.user.deleteMany()
   resetLoginRateLimit()
 }

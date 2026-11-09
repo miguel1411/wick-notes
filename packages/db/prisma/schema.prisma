@@ -25,6 +25,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   sessions  Session[]
+  apiTokens ApiToken[]
   documents Document[] @relation("DocumentCreatedBy")
 }
 
@@ -40,6 +41,29 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+enum TokenScope {
+  READ
+  WRITE
+}
+
+/// Token personal para la API (CLI, MCP, scripts). Solo se guarda su hash.
+model ApiToken {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  /// SHA-256 del token completo.
+  tokenHash  String     @unique
+  /// Primeros caracteres del token, para reconocerlo en la lista.
+  prefix     String
+  scope      TokenScope
+  createdAt  DateTime   @default(now())
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+
+  @@index([userId])
 }
 
 model Document {

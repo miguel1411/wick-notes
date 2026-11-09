@@ -116,6 +116,22 @@ packages/
   markdown/  Conversión Markdown ↔ Yjs con el mismo editor que la web (en un hilo aparte)
 ```
 
+### Tokens de API
+
+Para usar wick notes desde la terminal, agentes de IA o scripts, crea un token
+en **Mi cuenta → Tokens de acceso** y envíalo como cabecera:
+
+```bash
+curl -H "Authorization: Bearer wick_…" http://localhost:3120/api/documents
+```
+
+- **Solo lectura** (listar, leer) o **lectura y escritura** (también crear,
+  modificar y borrar notas). Actúan con la identidad de quien los crea.
+- Solo sirven para la API de notas (`/api/documents…`) y `/api/auth/state`:
+  con un token no se gestionan usuarios, contraseñas ni otros tokens.
+- Caducidad opcional; se revocan al momento desde la misma pantalla. Si se
+  desactiva la cuenta, sus tokens dejan de funcionar. Solo se guarda su hash.
+
 ### Markdown
 
 El formato de intercambio es Markdown (CommonMark + GFM: tablas, tareas,
@@ -140,8 +156,9 @@ inactividad, como mucho cada 10 s mientras se escribe, y siempre al apagarse.
 
 ### API
 
-Todas las rutas exigen sesión salvo `/api/health` y `/api/auth/*`. Las
-peticiones que modifican datos desde un navegador deben venir del mismo origen.
+Todas las rutas exigen sesión (cookie) o token de API (`Authorization: Bearer`),
+salvo `/api/health` y `/api/auth/*`. Las peticiones que modifican datos desde un
+navegador deben venir del mismo origen.
 
 | Método   | Ruta                   | Descripción                          |
 |----------|------------------------|--------------------------------------|
@@ -154,6 +171,9 @@ peticiones que modifican datos desde un navegador deben venir del mismo origen.
 | `POST`   | `/api/users`           | Crea un usuario (admin)              |
 | `PATCH`  | `/api/users/:id`       | Nombre, rol o desactivar (admin)     |
 | `POST`   | `/api/users/:id/password` | Restablece la contraseña (admin)  |
+| `GET`    | `/api/tokens`          | Mis tokens de API (solo con sesión)  |
+| `POST`   | `/api/tokens`          | `{ name, scope: "read" \| "write", expiresInDays? }` → token (una vez) |
+| `DELETE` | `/api/tokens/:id`      | Revoca un token propio               |
 | `GET`    | `/api/documents`       | Lista, de la más reciente a la más antigua |
 | `POST`   | `/api/documents`       | Crea (`{ "title"?: string }`)        |
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |

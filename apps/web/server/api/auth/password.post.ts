@@ -4,7 +4,8 @@ import { changeOwnPassword, type ChangeOwnPasswordInput } from '@wick/core'
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const body = await readJson<ChangeOwnPasswordInput>(event)
-  await runCore(() => changeOwnPassword(user, body, event.context.auth?.sessionId), event)
+  const auth = event.context.auth
+  await runCore(() => changeOwnPassword(user, body, auth?.via === 'session' ? auth.sessionId : undefined), event)
   setResponseStatus(event, 204)
   return null
 })
