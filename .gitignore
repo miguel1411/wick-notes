@@ -8,3 +8,9 @@ coverage/
 packages/db/src/generated/
 *.log
 .DS_Store
+
+# Skills de agentes que el CLI de Prisma puede descargar e instalar solo
+.agents/
+**/.claude/skills/
+.windsurf/
+skills-lock.json
