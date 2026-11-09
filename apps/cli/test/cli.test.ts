@@ -107,6 +107,9 @@ async function wick(argv: string[], opts: { env?: Record<string, string>; stdin?
     stdoutIsTTY: false,
     columns: 100,
     readStdin: async () => opts.stdin ?? '',
+    stdinLines: async function* () {
+      for (const l of (opts.stdin ?? '').split('\n')) yield l
+    },
     prompt: async () => answers.shift() ?? '',
   }
   const code = await run(argv, io)

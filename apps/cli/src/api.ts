@@ -36,6 +36,11 @@ export class WickApi {
     private readonly token: string,
   ) {}
 
+  /** Para el puente MCP, que habla directamente con /mcp. */
+  get authToken(): string {
+    return this.token
+  }
+
   private async send(method: Method, path: string, body?: unknown): Promise<Response> {
     let res: Response
     try {

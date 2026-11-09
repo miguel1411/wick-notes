@@ -34,6 +34,11 @@ const createError = ref('')
 const creating = ref(false)
 const newToken = ref<string | null>(null)
 const origin = import.meta.client ? window.location.origin : ''
+const mcpCommand = computed(() =>
+  newToken.value
+    ? `claude mcp add --transport http wick ${origin}/mcp --header "Authorization: Bearer ${newToken.value}"`
+    : '',
+)
 const cliCommands = computed(() =>
   newToken.value
     ? [
@@ -160,6 +165,12 @@ async function confirmRevoke() {
         <div class="space-y-1.5 pt-2">
           <p class="text-sm font-medium text-highlighted">Usarlo con la CLI (macOS y Linux, requiere Node 20+)</p>
           <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs leading-relaxed"><code>{{ cliCommands }}</code></pre>
+          <p class="pt-2 text-sm font-medium text-highlighted">Conectarlo a un agente de IA (MCP)</p>
+          <pre class="overflow-x-auto rounded-md bg-elevated p-3 text-xs leading-relaxed"><code>{{ mcpCommand }}</code></pre>
+          <p class="text-xs text-muted">
+            Servidor MCP: <code>{{ origin }}/mcp</code> con la cabecera <code>Authorization: Bearer …</code>.
+            Para clientes que solo admiten MCP local: <code>wick mcp</code>.
+          </p>
           <p class="text-xs text-muted">
             En Windows: descarga <a :href="`${origin}/cli/wick.mjs`" class="underline">wick.mjs</a> y ejecútalo con
             <code>node wick.mjs login …</code>

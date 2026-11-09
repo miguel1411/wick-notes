@@ -10,6 +10,8 @@ export interface IO {
   stdoutIsTTY: boolean
   columns: number
   readStdin: () => Promise<string>
+  /** Líneas de stdin según llegan (para el puente MCP). */
+  stdinLines: () => AsyncIterable<string>
   /** Pregunta en la terminal. `hidden` no muestra lo que se escribe. */
   prompt: (question: string, options?: { hidden?: boolean }) => Promise<string>
 }

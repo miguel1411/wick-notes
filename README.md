@@ -161,6 +161,31 @@ descarga `wick.mjs` y ejecútalo con `node wick.mjs …`. La configuración se g
 en `~/.config/wick-notes/config.json` (permisos 600); también se pueden usar las
 variables `WICK_SERVER` y `WICK_TOKEN`. Desde el repositorio: `pnpm wick notes list`.
 
+### MCP para agentes de IA
+
+La instancia es un servidor [MCP](https://modelcontextprotocol.io) en `/mcp`
+(Streamable HTTP), autenticado con un token de API:
+
+```bash
+claude mcp add --transport http wick http://servidor:3120/mcp \
+  --header "Authorization: Bearer wick_…"
+# o, para clientes que solo lanzan procesos locales (usa la config de `wick login`):
+claude mcp add wick -- wick mcp
+```
+
+| Herramienta     | Qué hace                                               | Token  |
+|-----------------|--------------------------------------------------------|--------|
+| `notes_list`    | Lista notas recientes                                  | lectura |
+| `notes_search`  | Busca por título                                       | lectura |
+| `notes_read`    | Lee una nota (por id o título) en Markdown             | lectura |
+| `notes_create`  | Crea una nota                                          | escritura |
+| `notes_append`  | Añade al final de una nota                             | escritura |
+| `notes_update`  | Reescribe una nota (por diferencias) y/o la renombra   | escritura |
+
+Con un token de solo lectura, el agente no ve las herramientas de escritura.
+Lo que escribe un agente aparece al momento en el editor de quien tenga la nota
+abierta, sin pisar lo que esa persona esté escribiendo.
+
 ### Markdown
 
 El formato de intercambio es Markdown (CommonMark + GFM: tablas, tareas,

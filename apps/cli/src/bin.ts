@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline'
+
 import { run } from './main'
 import type { IO } from './io'
 
@@ -35,6 +36,7 @@ const io: IO = {
   stdoutIsTTY: !!process.stdout.isTTY,
   columns: process.stdout.columns || 100,
   readStdin,
+  stdinLines: () => createInterface({ input: process.stdin, crlfDelay: Infinity }),
   prompt,
 }
 

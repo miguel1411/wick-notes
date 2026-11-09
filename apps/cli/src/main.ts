@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
 import { VERSION, WickApi } from './api'
 import * as auth from './commands/auth'
+import { mcpBridge } from './commands/mcp'
 import * as notes from './commands/notes'
 import { loadConfig, normalizeServer, type Config } from './config'
 import { colors } from './format'
@@ -19,6 +20,8 @@ Uso:
   wick login [--server URL] [--token TOKEN]   Conecta con tu servidor (crea el token en Mi cuenta)
   wick logout                                 Olvida el servidor y el token guardados
   wick whoami                                 Muestra con qué cuenta estás conectado
+  wick mcp                                    Servidor MCP por stdio para agentes de IA
+                                              (claude mcp add wick -- wick mcp)
 
   wick notes list [--limit N]                 Notas, de la más reciente a la más antigua
   wick notes search <texto>                   Busca notas por título
@@ -111,6 +114,9 @@ export async function run(argv: string[], io: IO): Promise<number> {
         break
       case 'logout':
         await auth.logout(io)
+        break
+      case 'mcp':
+        await mcpBridge(ctx)
         break
       case 'whoami':
         await auth.whoami(ctx, !!flags.json)
