@@ -1,0 +1,19 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  /// Estado Yjs codificado (Y.encodeStateAsUpdate). Fuente de verdad del contenido.
+  yjsState  Bytes?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}

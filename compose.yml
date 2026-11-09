@@ -1,0 +1,80 @@
+name: wick-notes
+
+# Sin login todavía: web y colaboración se publican solo en esta máquina.
+# Para abrirlas a tu red local pon BIND_ADDRESS=0.0.0.0 en .env (ver README).
+
+x-app: &app
+  build: .
+  image: wick-notes:local
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-wick}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}@postgres:5432/${POSTGRES_DB:-wick_notes}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wick}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-wick_notes}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    # Publicado solo en localhost, para desarrollo (pnpm dev / pnpm test).
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Aplica las migraciones pendientes y termina. Nunca borra datos.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["pnpm", "--filter", "@wick/db", "migrate:deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wick}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wick_notes}
+      HOST: 0.0.0.0
+      PORT: 3000
+      NUXT_PUBLIC_COLLAB_URL: ${NUXT_PUBLIC_COLLAB_URL:-}
+      NUXT_PUBLIC_COLLAB_PORT: ${COLLAB_PORT:-3121}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3120}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  collab:
+    <<: *app
+    command: ["node", "--import", "tsx", "apps/collab/src/index.ts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wick}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wick_notes}
+      COLLAB_HOST: 0.0.0.0
+      COLLAB_INTERNAL_PORT: 1234
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${COLLAB_PORT:-3121}:1234"
+    # Da tiempo a guardar los documentos abiertos al parar el contenedor.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(1234, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:

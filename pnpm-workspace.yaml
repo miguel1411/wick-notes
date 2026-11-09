@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Paquetes autorizados a ejecutar scripts de instalación.
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  vue-demi: false

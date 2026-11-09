@@ -1,0 +1,21 @@
+{
+  "name": "wick-notes",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @wick/db generate && pnpm --parallel --filter @wick/web --filter @wick/collab dev",
+    "build": "pnpm --filter @wick/db generate && pnpm --filter @wick/web build",
+    "db:migrate": "pnpm --filter @wick/db migrate:dev",
+    "db:deploy": "pnpm --filter @wick/db migrate:deploy",
+    "test": "pnpm --filter @wick/db generate && pnpm --filter @wick/core --filter @wick/collab --workspace-concurrency=1 test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

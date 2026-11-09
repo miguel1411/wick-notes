@@ -1,0 +1,67 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@source "../../../app";
+
+/* ---------- Editor (Milkdown Crepe) integrado con los colores de Nuxt UI ----------
+   El tema de Crepe se carga después (con el editor), así que estas reglas
+   usan un selector más específico (html .milkdown) para prevalecer. */
+html .milkdown {
+  --crepe-color-background: var(--ui-bg);
+  --crepe-color-on-background: var(--ui-text-highlighted);
+  --crepe-color-surface: var(--ui-bg-elevated);
+  --crepe-color-surface-low: var(--ui-bg-muted);
+  --crepe-color-on-surface: var(--ui-text);
+  --crepe-color-on-surface-variant: var(--ui-text-muted);
+  --crepe-color-outline: var(--ui-border-accented);
+  --crepe-color-primary: var(--ui-text-highlighted);
+  --crepe-color-secondary: var(--ui-bg-accented);
+  --crepe-color-on-secondary: var(--ui-text-highlighted);
+  --crepe-color-inverse: var(--ui-bg-inverted);
+  --crepe-color-on-inverse: var(--ui-bg);
+  --crepe-color-inline-code: var(--ui-error);
+  --crepe-color-error: var(--ui-error);
+  --crepe-color-hover: var(--ui-bg-accented);
+  --crepe-color-selected: var(--ui-bg-accented);
+  --crepe-color-inline-area: var(--ui-bg-muted);
+
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html .milkdown .ProseMirror {
+  /* Sin margen lateral: el texto se alinea con el título. El asa de bloques
+     de Crepe se dibuja a la izquierda, en el margen de la página. */
+  padding: 1.5rem 0 40vh;
+  outline: none;
+}
+
+/* ---------- Cursores y selecciones de otros colaboradores (y-prosemirror) ---------- */
+.ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.35em;
+  left: -1px;
+  padding: 0 0.35em;
+  border-radius: 4px 4px 4px 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #fff;
+  user-select: none;
+}
+
+.ProseMirror-yjs-selection {
+  opacity: 0.35;
+}
