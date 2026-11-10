@@ -1,5 +1,6 @@
 import { reindexMissingDocuments } from '@wick/core'
 import { disconnectPrisma } from '@wick/db'
+import { migrateLegacyContent } from './migrate-content'
 import { createCollabServer } from './server'
 
 const port = Number(process.env.COLLAB_INTERNAL_PORT ?? process.env.COLLAB_PORT ?? 3121)
@@ -24,6 +25,9 @@ async function shutdown(signal: string) {
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const) {
   process.once(signal, () => void shutdown(signal))
 }
+
+// Notas del editor anterior: se pasan a Markdown antes de aceptar conexiones.
+await migrateLegacyContent()
 
 await server.listen()
 console.log(`[collab] escuchando en ws://${address}:${port}`)

@@ -1,19 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Hocuspocus } from '@hocuspocus/server'
 import {
+  appendUpdate,
   createVersion,
   getVersionState,
   isValidServiceSecret,
   loadYjsState,
+  MAX_MARKDOWN_BYTES,
   NotFoundError,
   protectBeforeChange,
+  readMarkdown,
   renameDocument,
+  replaceUpdate,
+  restoreUpdate,
   SERVICE_HEADER,
+  stateFromMarkdown,
   toAuthUser,
   type AuthUser,
 } from '@wick/core'
 import { getPrisma } from '@wick/db'
-import { getMarkdownConverter, MAX_MARKDOWN_BYTES } from '@wick/markdown'
 import * as Y from 'yjs'
 import type { CollabContext } from './server'
 
@@ -47,7 +52,7 @@ export async function handleInternalRequest(
 
     const docMatch = url.pathname.match(/^\/internal\/documents\/([^/]+)\/markdown$/)
     if (docMatch && req.method === 'GET') {
-      const markdown = await getMarkdownConverter().toMarkdown(await currentState(instance, docMatch[1]!))
+      const markdown = readMarkdown(await currentState(instance, docMatch[1]!))
       res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' })
       res.end(markdown)
       return true
@@ -78,7 +83,7 @@ export async function handleInternalRequest(
     if (versionMatch && versionMatch[3] === 'markdown' && req.method === 'GET') {
       const { state } = await getVersionState(versionMatch[1]!, versionMatch[2]!)
       res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' })
-      res.end(await getMarkdownConverter().toMarkdown(state))
+      res.end(readMarkdown(state))
       return true
     }
     if (versionMatch && versionMatch[3] === 'restore' && req.method === 'POST') {
@@ -92,7 +97,7 @@ export async function handleInternalRequest(
 
     if (url.pathname === '/internal/markdown/to-yjs' && req.method === 'POST') {
       const body = (await readJson(req)) as { markdown?: unknown }
-      const state = await getMarkdownConverter().fromMarkdown(requireMarkdown(body.markdown))
+      const state = stateFromMarkdown(requireMarkdown(body.markdown))
       res.writeHead(200, { 'Content-Type': 'application/octet-stream' })
       res.end(Buffer.from(state))
       return true
@@ -157,12 +162,11 @@ async function writeMarkdown(
 ) {
   await requireDocument(id)
   const actor = await requireActor(actorId)
-  const converter = getMarkdownConverter()
   await applyToLiveDocument(instance, id, actor, async (state) => {
-    if (mode === 'append') return converter.appendUpdate(state, markdown)
+    if (mode === 'append') return appendUpdate(state, markdown)
     // Reemplazar puede borrar contenido: antes se guarda una versión.
     await protectBeforeChange(id, state, 'before_replace', actor.id)
-    return converter.replaceUpdate(state, markdown)
+    return replaceUpdate(state, markdown)
   })
 }
 
@@ -172,7 +176,7 @@ async function restoreVersion(instance: Hocuspocus<CollabContext>, id: string, v
   const version = await getVersionState(id, versionId)
   await applyToLiveDocument(instance, id, actor, async (state) => {
     await protectBeforeChange(id, state, 'before_restore', actor.id)
-    return getMarkdownConverter().restoreUpdate(state, version.state)
+    return restoreUpdate(state, version.state)
   })
   const current = await getPrisma().document.findUnique({ where: { id }, select: { title: true } })
   if (current && current.title !== version.title) await renameDocument(actor, id, { title: version.title })

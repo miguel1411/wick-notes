@@ -1,6 +1,6 @@
 import { getPrisma, Prisma } from '@wick/db'
-import * as Y from 'yjs'
 import { requireActor, type AuthUser } from './auth/actor'
+import { readMarkdown } from './content'
 import type { DocumentSummary } from './documents'
 import { readableDocumentsWhere } from './workspaces'
 
@@ -16,42 +16,12 @@ export function normalizeForSearch(text: string): string {
     .toLowerCase()
 }
 
-/** Atributos de nodos sin texto propio que conviene buscar (alt de imágenes, fórmulas…). */
-const TEXT_ATTRS = ['alt', 'title', 'value']
-
 /**
- * Texto plano de un documento a partir de su estado Yjs, sin necesidad del editor.
- * Cada bloque (párrafo, encabezado, elemento de lista, celda…) va en su línea.
+ * Texto de una nota para buscar y para las versiones: su Markdown tal cual.
+ * Buscar por subcadena encuentra igual «negrita» dentro de «**negrita**».
  */
 export function extractPlainText(state: Uint8Array | null): string {
-  if (!state?.length) return ''
-  const doc = new Y.Doc()
-  Y.applyUpdate(doc, state)
-  const lines: string[] = []
-
-  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
-    let inline = ''
-    for (const child of node.toArray()) {
-      if (child instanceof Y.XmlText) {
-        for (const op of child.toDelta() as { insert: unknown }[]) if (typeof op.insert === 'string') inline += op.insert
-      } else if (child instanceof Y.XmlElement) {
-        if (child.length === 0) {
-          const attrs = child.getAttributes() as Record<string, unknown>
-          const extra = TEXT_ATTRS.map((k) => attrs[k]).filter((v): v is string => typeof v === 'string' && v.trim() !== '')
-          if (extra.length) inline += (inline ? ' ' : '') + extra.join(' ')
-          continue
-        }
-        if (inline.trim()) lines.push(inline.trim())
-        inline = ''
-        visit(child)
-      }
-    }
-    if (inline.trim()) lines.push(inline.trim())
-  }
-
-  visit(doc.getXmlFragment('prosemirror'))
-  doc.destroy()
-  return lines.join('\n')
+  return readMarkdown(state)
 }
 
 /**

@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { EditorState } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { HocuspocusProvider } from '@hocuspocus/provider'
-import { Crepe, CrepeFeature } from '@milkdown/crepe'
-import { collab, collabServiceCtx } from '@milkdown/plugin-collab'
+import { yCollab } from 'y-codemirror.next'
 import * as Y from 'yjs'
-import '@milkdown/crepe/theme/common/style.css'
-import '@milkdown/crepe/theme/frame.css'
+import { editorExtensions } from '~/editor/setup'
 
 const props = defineProps<{ documentId: string; readonly?: boolean }>()
 const emit = defineEmits<{
@@ -32,7 +32,7 @@ watch(status, (s) => emit('status', s), { immediate: true })
 
 let ydoc: Y.Doc | undefined
 let provider: HocuspocusProvider | undefined
-let crepe: Crepe | undefined
+let view: EditorView | undefined
 
 onMounted(async () => {
   const config = useRuntimeConfig()
@@ -45,6 +45,8 @@ onMounted(async () => {
     url: resolveCollabUrl(config.public.collabUrl, config.public.collabPort),
     name: props.documentId,
     document: ydoc,
+    // El servidor rechaza editores que esperen otro formato de contenido.
+    token: COLLAB_CONTENT_FORMAT,
   })
   provider.setAwarenessField('user', identity)
 
@@ -82,65 +84,40 @@ onMounted(async () => {
   }
   awareness?.on('change', emitPeers)
 
-  // El editor se crea en paralelo a la primera sincronización, pero solo se enlaza
-  // al documento Yjs cuando el servidor ya entregó su contenido: así nunca se
-  // muestra (ni se reenvía) un documento vacío por encima del real.
-  const firstSync = new Promise<void>((resolve) => {
-    if (provider!.isSynced) return resolve()
-    provider!.on('synced', () => resolve())
-  })
+  // El editor se crea cuando el servidor ya entregó el contenido: así nunca se
+  // muestra (ni se reenvía) una nota vacía por encima de la real.
+  if (!provider.isSynced) await new Promise<void>((resolve) => provider!.on('synced', () => resolve()))
+  if (!ydoc || !provider) return // desmontado mientras cargaba
 
-  // Sin contenedor, Crepe se montaría en <body>: mejor fallar de forma visible.
+  // Sin contenedor, el editor no tendría dónde montarse: mejor fallar de forma visible.
   if (!root.value) throw new Error('CollabEditor: el contenedor del editor no está montado')
 
-  crepe = new Crepe({
-    root: root.value,
-    defaultValue: '',
-    features: {
-      // La IA es opcional y no se activa sin configuración explícita (PRODUCT.md §5.6).
-      [CrepeFeature.AI]: false,
-      // La subida local crea URLs blob: que otros colaboradores no pueden ver.
-      [CrepeFeature.ImageBlock]: false,
-      [CrepeFeature.TopBar]: false,
-    },
-    featureConfigs: {
-      [CrepeFeature.Placeholder]: { text: 'Escribe algo, o pulsa / para ver los bloques…', mode: 'doc' },
-    },
+  const text = ydoc.getText(COLLAB_CONTENT_KEY)
+  view = new EditorView({
+    parent: root.value,
+    state: EditorState.create({
+      doc: text.toString(),
+      extensions: [
+        editorExtensions({ readonly: !!props.readonly }),
+        // Sincronía con Yjs, cursores de los demás y deshacer solo lo propio.
+        // Lectores: el servidor además descarta cualquier cambio que envíen.
+        yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }),
+      ],
+    }),
   })
-  crepe.editor.use(collab)
-
-  await Promise.all([crepe.create(), firstSync])
-  if (!crepe || !ydoc || !provider) return // desmontado mientras cargaba
-
-  crepe.editor.action((ctx) => {
-    ctx.get(collabServiceCtx).bindDoc(ydoc!).setAwareness(awareness!).connect()
-  })
-  // Lectores: el servidor ya descarta sus cambios; aquí además no se pueden escribir.
-  if (props.readonly) crepe.setReadonly(true)
   ready.value = true
   emitPeers()
 })
 
 onBeforeUnmount(() => {
-  const editor = crepe
+  const v = view
   const p = provider
   const d = ydoc
-  crepe = provider = ydoc = undefined
-
-  // Orden importante: crepe.destroy() es asíncrono y, mientras termina, los plugins de
-  // Yjs (sincronía y cursores) seguirían enviando cambios a un editor medio destruido.
-  // 1) Desenganchar la colaboración del editor, 2) cerrar conexión y documento Yjs,
-  // 3) destruir el editor.
-  if (ready.value) {
-    try {
-      editor?.editor.action((ctx) => ctx.get(collabServiceCtx).disconnect())
-    } catch {
-      // El editor ya no está disponible: no hay nada que desenganchar.
-    }
-  }
+  view = provider = ydoc = undefined
+  // Primero el editor (deja de escuchar al documento), luego la conexión y el documento.
+  v?.destroy()
   p?.destroy()
   d?.destroy()
-  void editor?.destroy()
 })
 </script>
 

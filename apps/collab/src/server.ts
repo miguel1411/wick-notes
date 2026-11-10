@@ -1,6 +1,7 @@
 import { Database } from '@hocuspocus/extension-database'
 import { Server } from '@hocuspocus/server'
 import {
+  CONTENT_FORMAT,
   loadYjsState,
   maybeCreateAutoVersion,
   NotFoundError,
@@ -59,6 +60,13 @@ export function createCollabServer(options: CollabServerOptions) {
       const { role } = await requireDocumentAccess(session.user, documentName, 'read')
       connectionConfig.readOnly = !roleAllows(role, 'write')
       context.user = session.user
+    },
+
+    // El editor envía como «token» el formato del contenido que entiende. Una
+    // pestaña con una versión anterior de la web (otro formato) no puede conectar:
+    // escribiría donde el resto ya no lee. Al recargar, recibe el editor nuevo.
+    async onAuthenticate({ token }) {
+      if (token !== CONTENT_FORMAT) throw new UnauthorizedError()
     },
 
     extensions: [

@@ -1,5 +1,6 @@
 /**
- * Hilo de conversión Markdown ↔ Yjs.
+ * Hilo de conversión del formato ANTERIOR de las notas (Y.XmlFragment de
+ * Milkdown) a Markdown. Solo para la migración; ver index.ts.
  *
  * Usa el mismo editor que el navegador (Milkdown Crepe, con las mismas funciones
  * activas) sobre un DOM simulado (happy-dom). Así el esquema es idéntico al de la
@@ -31,7 +32,7 @@ const { prosemirrorToYXmlFragment, yXmlFragmentToProseMirrorRootNode } = await i
 
 type Node = ReturnType<ReturnType<typeof getParser>>
 
-// Debe coincidir con la configuración del editor en apps/web (CollabEditor.vue).
+// Misma configuración que tenía el editor web (Milkdown Crepe) en ese formato.
 const root = document.createElement('div')
 document.body.appendChild(root)
 const crepe = new Crepe({
@@ -153,56 +154,9 @@ function fromMarkdown(markdown: string): Uint8Array {
   return Y.encodeStateAsUpdate(ydoc)
 }
 
-/**
- * Cambios Yjs que convierten el documento `state` en `markdown`.
- * Se calcula por diferencias, así que se puede aplicar sobre el documento vivo
- * aunque otras personas lo estén editando a la vez.
- */
-function replaceUpdate(state: Uint8Array | null, markdown: string): Uint8Array {
-  const ydoc = loadDoc(state)
-  const before = Y.encodeStateVector(ydoc)
-  prosemirrorToYXmlFragment(parser(markdown), ydoc.getXmlFragment(FRAGMENT))
-  return Y.encodeStateAsUpdate(ydoc, before)
-}
-
-/** Cambios Yjs que añaden `markdown` al final del documento. */
-function appendUpdate(state: Uint8Array | null, markdown: string): Uint8Array {
-  const ydoc = loadDoc(state)
-  const current = docToNode(ydoc)
-  const added = parser(markdown)
-  if (!current) return replaceUpdate(state, markdown)
-
-  // Si el documento termina en un párrafo vacío (el que deja el editor), se reutiliza.
-  let content = current.content
-  const last = content.lastChild
-  if (last && last.type.name === 'paragraph' && last.content.size === 0) {
-    content = content.cut(0, content.size - last.nodeSize)
-  }
-  const combined = schema.topNodeType.create(current.attrs, content.append(added.content))
-
-  const before = Y.encodeStateVector(ydoc)
-  prosemirrorToYXmlFragment(combined, ydoc.getXmlFragment(FRAGMENT))
-  return Y.encodeStateAsUpdate(ydoc, before)
-}
-
-/**
- * Cambios Yjs que llevan el documento `state` al contenido de `target` (otra
- * versión de la misma nota). Por diferencias, igual que replaceUpdate.
- */
-function restoreUpdate(state: Uint8Array | null, target: Uint8Array): Uint8Array {
-  const node = docToNode(loadDoc(target)) ?? schema.topNodeType.createAndFill()!
-  const ydoc = loadDoc(state)
-  const before = Y.encodeStateVector(ydoc)
-  prosemirrorToYXmlFragment(node, ydoc.getXmlFragment(FRAGMENT))
-  return Y.encodeStateAsUpdate(ydoc, before)
-}
-
 type Request =
   | { id: number; op: 'toMarkdown'; state: Uint8Array | null }
   | { id: number; op: 'fromMarkdown'; markdown: string }
-  | { id: number; op: 'replaceUpdate'; state: Uint8Array | null; markdown: string }
-  | { id: number; op: 'appendUpdate'; state: Uint8Array | null; markdown: string }
-  | { id: number; op: 'restoreUpdate'; state: Uint8Array | null; target: Uint8Array }
 
 function handle(req: Request): string | Uint8Array {
   switch (req.op) {
@@ -210,12 +164,6 @@ function handle(req: Request): string | Uint8Array {
       return toMarkdown(req.state)
     case 'fromMarkdown':
       return fromMarkdown(req.markdown)
-    case 'replaceUpdate':
-      return replaceUpdate(req.state, req.markdown)
-    case 'appendUpdate':
-      return appendUpdate(req.state, req.markdown)
-    case 'restoreUpdate':
-      return restoreUpdate(req.state, req.target)
   }
 }
 

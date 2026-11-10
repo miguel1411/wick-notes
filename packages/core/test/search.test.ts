@@ -1,5 +1,4 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import * as Y from 'yjs'
 import { disconnectPrisma, getPrisma } from '@wick/db'
 import {
   createDocument,
@@ -9,21 +8,17 @@ import {
   renameDocument,
   saveYjsState,
   searchDocuments,
+  stateFromMarkdown,
   type AuthUser,
 } from '../src'
 import { makeUser, resetDatabase } from './helpers'
 
-/** Estado Yjs con la misma forma que genera el editor (fragmento «prosemirror»). */
+/** Estado Yjs de una nota con estos bloques (como texto Markdown, igual que el editor). */
 function docState(blocks: Array<[string, string] | [string, string, Record<string, string>]>): Uint8Array {
-  const ydoc = new Y.Doc()
-  const fragment = ydoc.getXmlFragment('prosemirror')
-  for (const [name, text, attrs] of blocks) {
-    const el = new Y.XmlElement(name)
-    for (const [k, v] of Object.entries(attrs ?? {})) el.setAttribute(k, v)
-    if (text) el.insert(0, [new Y.XmlText(text)])
-    fragment.push([el])
-  }
-  return Y.encodeStateAsUpdate(ydoc)
+  const md = blocks
+    .map(([name, text, attrs]) => (name === 'heading' ? `# ${text}` : name === 'image' ? `![${attrs?.alt ?? ''}](${attrs?.src ?? ''})` : text))
+    .join('\n\n')
+  return stateFromMarkdown(md)
 }
 
 let ana: AuthUser
@@ -41,13 +36,13 @@ describe('texto plano e índice', () => {
     expect(normalizeForSearch('Wi-Fi unless-stopped 192.168.1.10')).toBe('wifi unlessstopped 192.168.1.10')
   })
 
-  it('extrae el texto de cada bloque en su línea, con alt de imágenes', () => {
+  it('el texto indexado es el Markdown de la nota, alt de imágenes incluido', () => {
     const state = docState([
       ['heading', 'Título'],
       ['paragraph', 'Primer párrafo'],
       ['image', '', { src: 'x.png', alt: 'diagrama de red' }],
     ])
-    expect(extractPlainText(state)).toBe('Título\nPrimer párrafo\ndiagrama de red')
+    expect(extractPlainText(state)).toBe('# Título\n\nPrimer párrafo\n\n![diagrama de red](x.png)')
     expect(extractPlainText(null)).toBe('')
   })
 

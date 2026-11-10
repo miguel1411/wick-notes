@@ -1,8 +1,5 @@
 import { Worker } from 'node:worker_threads'
 
-/** Tamaño máximo de un documento Markdown que se acepta convertir (2 MB). */
-export const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
-
 const CALL_TIMEOUT_MS = 30_000
 
 interface Pending {
@@ -12,12 +9,14 @@ interface Pending {
 }
 
 /**
- * Conversión Markdown ↔ estado Yjs con el mismo esquema que el editor web.
+ * Conversor del formato ANTERIOR de las notas (Milkdown/ProseMirror en un
+ * Y.XmlFragment) a Markdown. Solo lo usa la migración al formato actual (texto
+ * Markdown en un Y.Text, ver @wick/core/content) y se quitará más adelante.
  *
  * Todo el trabajo ocurre en un hilo aparte (ver worker.ts). Las peticiones se
  * encolan; si el hilo falla, se rechazan las pendientes y se arranca uno nuevo.
  */
-export class MarkdownConverter {
+export class LegacyMarkdownConverter {
   #worker: Worker | undefined
   #ready: Promise<void> | undefined
   #pending = new Map<number, Pending>()
@@ -81,24 +80,9 @@ export class MarkdownConverter {
     return this.#call({ op: 'toMarkdown', state })
   }
 
-  /** Estado Yjs completo de un documento nuevo con este Markdown. */
+  /** Estado Yjs en el formato anterior con este Markdown (para pruebas de la migración). */
   fromMarkdown(markdown: string): Promise<Uint8Array> {
     return this.#call({ op: 'fromMarkdown', markdown })
-  }
-
-  /** Cambios Yjs que convierten el estado dado en `markdown` (aplicables a un documento vivo). */
-  replaceUpdate(state: Uint8Array | null, markdown: string): Promise<Uint8Array> {
-    return this.#call({ op: 'replaceUpdate', state, markdown })
-  }
-
-  /** Cambios Yjs que añaden `markdown` al final del estado dado. */
-  appendUpdate(state: Uint8Array | null, markdown: string): Promise<Uint8Array> {
-    return this.#call({ op: 'appendUpdate', state, markdown })
-  }
-
-  /** Cambios Yjs que llevan el estado actual al contenido de otra versión (`target`). */
-  restoreUpdate(state: Uint8Array | null, target: Uint8Array): Promise<Uint8Array> {
-    return this.#call({ op: 'restoreUpdate', state, target })
   }
 
   /** Para el hilo (tests y cierre ordenado). */
@@ -110,10 +94,3 @@ export class MarkdownConverter {
   }
 }
 
-let shared: MarkdownConverter | undefined
-
-/** Conversor compartido por todo el proceso. */
-export function getMarkdownConverter(): MarkdownConverter {
-  shared ??= new MarkdownConverter()
-  return shared
-}

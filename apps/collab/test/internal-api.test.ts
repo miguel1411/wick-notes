@@ -1,5 +1,7 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider'
 import {
+  CONTENT_FORMAT,
+  CONTENT_KEY,
   createDocument,
   listVersions,
   renameDocument,
@@ -7,13 +9,13 @@ import {
   getServiceSecret,
   hashPassword,
   loadYjsState,
+  readMarkdown,
   SERVICE_HEADER,
   SESSION_COOKIE,
   toAuthUser,
   type AuthUser,
 } from '@wick/core'
 import { disconnectPrisma, getPrisma } from '@wick/db'
-import { getMarkdownConverter } from '@wick/markdown'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 import * as Y from 'yjs'
@@ -42,7 +44,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server.destroy()
-  await getMarkdownConverter().close()
   await disconnectPrisma()
 })
 
@@ -72,13 +73,13 @@ async function openClient(id: string) {
       }
     },
   })
-  const provider = new HocuspocusProvider({ websocketProvider: socket, name: id, document: ydoc })
+  const provider = new HocuspocusProvider({ websocketProvider: socket, name: id, document: ydoc, token: CONTENT_FORMAT })
   provider.attach()
   await new Promise<void>((resolve) => provider.on('synced', () => resolve()))
   return { ydoc, close: () => (provider.destroy(), socket.destroy()) }
 }
 
-const markdownOf = async (ydoc: Y.Doc) => getMarkdownConverter().toMarkdown(Y.encodeStateAsUpdate(ydoc))
+const markdownOf = async (ydoc: Y.Doc) => ydoc.getText(CONTENT_KEY).toString()
 
 async function waitFor(check: () => Promise<boolean> | boolean, what: string) {
   const start = Date.now()
@@ -105,18 +106,17 @@ describe('API interna del servidor de colaboración', () => {
     const id = await newDoc('# Hola\n\nmundo')
     const res = await fetch(url(`/internal/documents/${id}/markdown`), { headers: auth() })
     expect(res.headers.get('content-type')).toContain('text/markdown')
-    expect(await res.text()).toBe('# Hola\n\nmundo\n')
+    expect(await res.text()).toBe('# Hola\n\nmundo')
   })
 
   it('devuelve lo último escrito aunque todavía no se haya guardado', async () => {
     const id = await newDoc('Inicio')
     const client = await openClient(id)
     // Escribe directamente en el documento del navegador.
-    const p = client.ydoc.getXmlFragment('prosemirror').get(0) as Y.XmlElement
-    ;(p.get(0) as Y.XmlText).insert(6, ' y algo más')
+    client.ydoc.getText(CONTENT_KEY).insert(6, ' y algo más')
     await waitFor(async () => {
       const res = await fetch(url(`/internal/documents/${id}/markdown`), { headers: auth() })
-      return (await res.text()) === 'Inicio y algo más\n'
+      return (await res.text()) === 'Inicio y algo más'
     }, 'contenido en vivo')
     client.close()
   })
@@ -133,13 +133,13 @@ describe('API interna del servidor de colaboración', () => {
       })
 
     expect((await post({ mode: 'append', markdown: 'Entrada del agente.' })).status).toBe(204)
-    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nEntrada del agente.\n', 'append en el navegador')
+    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nEntrada del agente.', 'append en el navegador')
 
     // Guardado al momento (sin esperar al debounce).
-    expect(await getMarkdownConverter().toMarkdown(await loadYjsState(id))).toBe('# Diario\n\nEntrada del agente.\n')
+    expect(readMarkdown(await loadYjsState(id))).toBe('# Diario\n\nEntrada del agente.')
 
     expect((await post({ mode: 'replace', markdown: '# Diario\n\nReescrito.' })).status).toBe(204)
-    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nReescrito.\n', 'replace en el navegador')
+    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nReescrito.', 'replace en el navegador')
     client.close()
   })
 
@@ -154,12 +154,12 @@ describe('API interna del servidor de colaboración', () => {
     await renameDocument(user, id, { title: 'Título cambiado' })
     let versions = await listVersions(user, id)
     expect(versions.map((v) => v.reason)).toEqual(['before_replace'])
-    expect(versions[0]!.preview).toBe('Plan Versión buena.')
+    expect(versions[0]!.preview).toBe('# Plan Versión buena.')
     expect(versions[0]!.title).toBe('Prueba')
 
     // Markdown de la versión.
     const res = await fetch(url(`/internal/documents/${id}/versions/${versions[0]!.id}/markdown`), { headers: auth() })
-    expect(await res.text()).toBe('# Plan\n\nVersión buena.\n')
+    expect(await res.text()).toBe('# Plan\n\nVersión buena.')
 
     // Guardar a mano el estado actual.
     const manual = await json(`/internal/documents/${id}/versions`, { actorId: user.id })
@@ -168,7 +168,7 @@ describe('API interna del servidor de colaboración', () => {
 
     // Restaurar: el navegador lo ve en vivo, vuelve el título y no se pierde nada.
     expect((await json(`/internal/documents/${id}/versions/${versions[0]!.id}/restore`, { actorId: user.id })).status).toBe(204)
-    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Plan\n\nVersión buena.\n', 'restauración en el navegador')
+    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Plan\n\nVersión buena.', 'restauración en el navegador')
     expect((await getPrisma().document.findUniqueOrThrow({ where: { id } })).title).toBe('Prueba')
     versions = await listVersions(user, id)
     expect(versions.map((v) => v.reason)).toEqual(['manual', 'before_replace'])

@@ -34,3 +34,11 @@ export function resolveCollabUrl(configured: string, port: number | string): str
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   return `${protocol}://${window.location.hostname}:${port}`
 }
+
+/**
+ * Contenido de una nota en Yjs: texto Markdown en un Y.Text con este nombre.
+ * Igual que CONTENT_KEY y CONTENT_FORMAT de @wick/core (content.ts).
+ */
+export const COLLAB_CONTENT_KEY = 'markdown'
+/** Formato que el editor anuncia al conectarse; el servidor rechaza otros. */
+export const COLLAB_CONTENT_FORMAT = 'markdown-v1'

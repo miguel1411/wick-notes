@@ -1,5 +1,7 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider'
 import {
+  CONTENT_FORMAT,
+  CONTENT_KEY,
   createDocument,
   createSession,
   deleteDocument,
@@ -60,6 +62,7 @@ async function startServer() {
 function connect(
   name: string,
   cookieHeader: string | null = cookie,
+  token: string = CONTENT_FORMAT,
 ): Promise<{ provider: HocuspocusProvider; socket: HocuspocusProviderWebsocket; doc: Y.Doc }> {
   const doc = new Y.Doc()
   return new Promise((resolve, reject) => {
@@ -73,6 +76,7 @@ function connect(
       websocketProvider,
       name,
       document: doc,
+      token,
       onSynced: () => {
         clearTimeout(timer)
         resolve({ provider, socket: websocketProvider, doc })
@@ -97,7 +101,7 @@ async function waitFor(check: () => boolean, what: string, timeout = 5000) {
   }
 }
 
-const text = (doc: Y.Doc) => doc.getText('body').toString()
+const text = (doc: Y.Doc) => doc.getText(CONTENT_KEY).toString()
 
 beforeEach(async () => {
   docId = (await createDocument(user, { title: 'Prueba de colaboración' })).id
@@ -121,8 +125,8 @@ describe('servidor de colaboración', () => {
     const b = await connect(docId)
 
     // Ediciones simultáneas en la misma posición, sin esperar entre ellas.
-    a.doc.getText('body').insert(0, 'AAA')
-    b.doc.getText('body').insert(0, 'BBB')
+    a.doc.getText(CONTENT_KEY).insert(0, 'AAA')
+    b.doc.getText(CONTENT_KEY).insert(0, 'BBB')
 
     await waitFor(() => text(a.doc).length === 6 && text(a.doc) === text(b.doc), 'convergencia')
     expect(text(a.doc)).toContain('AAA')
@@ -131,7 +135,7 @@ describe('servidor de colaboración', () => {
 
   it('el contenido se guarda y sobrevive a un reinicio del servidor', async () => {
     const a = await connect(docId)
-    a.doc.getText('body').insert(0, 'contenido persistente ñ 🚀')
+    a.doc.getText(CONTENT_KEY).insert(0, 'contenido persistente ñ 🚀')
     await waitFor(() => a.provider.unsyncedChanges === 0, 'cambios enviados')
 
     // destroy() guarda los documentos pendientes antes de cerrar.
@@ -153,12 +157,12 @@ describe('servidor de colaboración', () => {
   it('las ediciones hechas sin conexión se integran al reconectar', async () => {
     const a = await connect(docId)
     const b = await connect(docId)
-    a.doc.getText('body').insert(0, 'base')
+    a.doc.getText(CONTENT_KEY).insert(0, 'base')
     await waitFor(() => text(b.doc) === 'base', 'sincronización inicial')
 
     a.socket.disconnect()
-    a.doc.getText('body').insert(4, ' offline-A')
-    b.doc.getText('body').insert(0, 'online-B ')
+    a.doc.getText(CONTENT_KEY).insert(4, ' offline-A')
+    b.doc.getText(CONTENT_KEY).insert(0, 'online-B ')
     await new Promise((r) => setTimeout(r, 200))
     expect(text(b.doc)).not.toContain('offline-A')
 
@@ -189,11 +193,11 @@ describe('servidor de colaboración', () => {
     const readerCookie = `${SESSION_COOKIE}=${(await createSession(reader)).token}`
 
     const owner = await connect(docId)
-    owner.doc.getText('body').insert(0, 'original')
+    owner.doc.getText(CONTENT_KEY).insert(0, 'original')
     const viewer = await connect(docId, readerCookie)
     await waitFor(() => text(viewer.doc) === 'original', 'el lector recibe el contenido')
 
-    viewer.doc.getText('body').insert(0, 'HACKEO ')
+    viewer.doc.getText(CONTENT_KEY).insert(0, 'HACKEO ')
     await new Promise((r) => setTimeout(r, 400))
     expect(text(owner.doc)).toBe('original')
 
@@ -202,6 +206,11 @@ describe('servidor de colaboración', () => {
       await prisma.user.create({ data: { username: 'ajena', name: 'Ajena', passwordHash: await hashPassword('x'.repeat(12)) } }),
     )
     await expect(connect(docId, `${SESSION_COOKIE}=${(await createSession(outsider)).token}`)).rejects.toThrow()
+  })
+
+  it('rechaza un editor de una versión anterior (sin el formato del contenido)', async () => {
+    await expect(connect(docId, cookie, '')).rejects.toThrow()
+    await expect(connect(docId, cookie, 'prosemirror')).rejects.toThrow()
   })
 
   it('rechaza la sesión de una cuenta desactivada', async () => {

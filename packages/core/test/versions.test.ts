@@ -1,5 +1,4 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import * as Y from 'yjs'
 import { disconnectPrisma, getPrisma } from '@wick/db'
 import {
   AUTO_VERSION_INTERVAL_MS,
@@ -12,17 +11,13 @@ import {
   MAX_VERSIONS_PER_DOCUMENT,
   NotFoundError,
   protectBeforeChange,
+  readMarkdown,
+  stateFromMarkdown,
   type AuthUser,
 } from '../src'
 import { makeUser, resetDatabase } from './helpers'
 
-const state = (text: string) => {
-  const d = new Y.Doc()
-  const p = new Y.XmlElement('paragraph')
-  p.insert(0, [new Y.XmlText(text)])
-  d.getXmlFragment('prosemirror').push([p])
-  return Y.encodeStateAsUpdate(d)
-}
+const state = (text: string) => stateFromMarkdown(text)
 
 let ana: AuthUser
 let docId: string
@@ -63,9 +58,7 @@ describe('versiones', () => {
   it('guarda el estado completo y comprueba que la versión es de esa nota', async () => {
     const v = await createVersion(docId, state('texto exacto'), { reason: 'manual', authorId: ana.id })
     const { state: s, title } = await getVersionState(docId, v.id)
-    const d = new Y.Doc()
-    Y.applyUpdate(d, s)
-    expect(d.getXmlFragment('prosemirror').toString()).toContain('texto exacto')
+    expect(readMarkdown(s)).toBe('texto exacto')
     expect(title).toBe('Notas')
 
     const other = (await createDocument(ana, { title: 'Otra' })).id

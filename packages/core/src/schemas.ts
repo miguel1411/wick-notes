@@ -34,7 +34,7 @@ export type UpdateDocumentInput = z.input<typeof updateDocumentInput>
 export type CreateDocumentInput = z.input<typeof createDocumentInput>
 export type RenameDocumentInput = z.input<typeof renameDocumentInput>
 
-/** Tamaño máximo de un Markdown recibido (igual que @wick/markdown). */
+/** Tamaño máximo de un Markdown recibido (2 MB). */
 export const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
 
 export const markdownSchema = z
