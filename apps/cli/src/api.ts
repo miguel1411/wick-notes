@@ -117,6 +117,12 @@ export class WickApi {
     return this.json('GET', '/api/workspaces')
   }
 
+  /** Árbol de espacios, carpetas y notas (todos o uno). */
+  tree(workspaceId?: string): Promise<unknown[]> {
+    const qs = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : ''
+    return this.json('GET', `/api/workspaces/tree${qs}`)
+  }
+
   search(query: string, limit = 20): Promise<SearchResult[]> {
     return this.json('GET', `/api/documents/search?q=${encodeURIComponent(query)}&limit=${limit}`)
   }

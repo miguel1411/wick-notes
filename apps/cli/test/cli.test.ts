@@ -48,6 +48,16 @@ function startServer() {
     const find = (id: string) => notes.find((n) => n.id === id)
     let m: RegExpMatchArray | null
 
+    if (p === '/api/workspaces/tree') {
+      const general = {
+        id: 'general', name: 'General', role: 'editor', everyone: true,
+        folders: [{ id: 'f1', name: 'Infra', folders: [{ id: 'f2', name: 'Servidores', folders: [], notes: [{ id: 'n1', title: 'dev-home' }] }], notes: [{ id: 'n2', title: 'Router' }] }],
+        notes: [{ id: 'n3', title: 'Acta 2024' }],
+      }
+      const personal = { id: 'wsprivado', name: 'Personal', role: 'owner', everyone: false, folders: [], notes: [] }
+      const ws = url.searchParams.get('workspace')
+      return send(200, ws ? [ws === 'wsprivado' ? personal : general] : [general, personal])
+    }
     if (p === '/api/workspaces') {
       return send(200, [
         { id: 'general', name: 'General', everyone: true, role: 'editor', documentCount: notes.length },
@@ -361,6 +371,28 @@ describe('wick notes', () => {
     expect((notes[0] as Note & { workspaceId?: string }).workspaceId).toBe('wsprivado')
     const bad = await wick(['create', 'x', '-w', 'nope'], { env: loggedIn })
     expect(bad.err).toContain('Tus espacios: General, Personal')
+  })
+
+  it('árbol jerárquico', async () => {
+    const t = await wick(['tree'], { env: loggedIn })
+    expect(t.out).toBe(
+      [
+        'General  (para todos · editor)',
+        '├── Infra/',
+        '│   ├── Servidores/',
+        '│   │   └── dev-home',
+        '│   └── Router',
+        '└── Acta 2024',
+        '',
+        'Personal  (privado · propietario)',
+        '└── (vacío)',
+        '',
+      ].join('\n'),
+    )
+    expect(t.err).toContain('2 espacios · 2 carpetas · 3 notas')
+    expect((await wick(['notes', 'tree', '-w', 'personal'], { env: loggedIn })).out).toBe('Personal  (privado · propietario)\n└── (vacío)\n')
+    expect((await wick(['tree', '--ids'], { env: loggedIn })).out).toContain('│   │   └── dev-home  n1')
+    expect(JSON.parse((await wick(['tree', '--json'], { env: loggedIn })).out)[0].folders[0].name).toBe('Infra')
   })
 
   it('ayuda, versión y errores de uso', async () => {

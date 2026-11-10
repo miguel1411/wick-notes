@@ -220,6 +220,7 @@ wick login --server http://servidor:3120 --token wick_…   # token de Mi cuenta
 
 ```bash
 wick workspaces                         # tus espacios y tu rol
+wick tree                               # árbol de espacios, carpetas y notas (-w espacio, --ids)
 wick notes list                         # recientes primero (-w espacio, --json para scripts)
 wick notes search postgres réplica      # en títulos y contenido, con fragmento
 wick notes get "red de casa"            # por id, principio del id o título

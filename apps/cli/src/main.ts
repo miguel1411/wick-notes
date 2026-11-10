@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util'
 import { VERSION, WickApi } from './api'
 import * as auth from './commands/auth'
 import { mcpBridge } from './commands/mcp'
+import { tree } from './commands/tree'
 import * as notes from './commands/notes'
 import { loadConfig, normalizeServer, type Config } from './config'
 import { colors } from './format'
@@ -24,6 +25,7 @@ Uso:
                                               (claude mcp add wick -- wick mcp)
 
   wick workspaces                             Tus espacios de trabajo y tu rol en cada uno
+  wick tree [-w espacio] [--ids]              Árbol de espacios, carpetas y notas
   wick notes list [--limit N]                 Notas, de la más reciente a la más antigua
   wick notes search <texto>                   Busca en títulos y contenido (todas las palabras)
   wick notes get <nota> [--body]              Muestra una nota en Markdown
@@ -73,6 +75,7 @@ export async function run(argv: string[], io: IO): Promise<number> {
         yes: { type: 'boolean', short: 'y' },
         force: { type: 'boolean' },
         workspace: { type: 'string', short: 'w' },
+        ids: { type: 'boolean' },
       },
     })
   } catch (err) {
@@ -152,6 +155,9 @@ export async function run(argv: string[], io: IO): Promise<number> {
         break
       case 'export':
         await notes.exportNotes(ctx, rest.join(' ') || undefined, flags)
+        break
+      case 'tree':
+        await tree(ctx, flags)
         break
       case 'workspaces':
       case 'ws':
