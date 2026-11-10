@@ -96,6 +96,11 @@ export class MarkdownConverter {
     return this.#call({ op: 'appendUpdate', state, markdown })
   }
 
+  /** Cambios Yjs que llevan el estado actual al contenido de otra versión (`target`). */
+  restoreUpdate(state: Uint8Array | null, target: Uint8Array): Promise<Uint8Array> {
+    return this.#call({ op: 'restoreUpdate', state, target })
+  }
+
   /** Para el hilo (tests y cierre ordenado). */
   async close(): Promise<void> {
     const worker = this.#worker

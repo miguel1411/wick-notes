@@ -16,6 +16,15 @@ export interface SearchResult extends NoteSummary {
   titleMatch: boolean
 }
 
+export interface Version {
+  id: string
+  createdAt: string
+  title: string
+  reason: 'auto' | 'manual' | 'before_replace' | 'before_restore'
+  author: { id: string; name: string } | null
+  preview: string
+}
+
 export interface Me {
   id: string
   username: string
@@ -123,6 +132,18 @@ export class WickApi {
 
   rename(id: string, title: string): Promise<NoteSummary> {
     return this.json('PATCH', `/api/documents/${encodeURIComponent(id)}`, { title })
+  }
+
+  versions(id: string): Promise<Version[]> {
+    return this.json('GET', `/api/documents/${encodeURIComponent(id)}/versions`)
+  }
+
+  async versionMarkdown(id: string, versionId: string): Promise<string> {
+    return (await this.send('GET', `/api/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/markdown`)).text()
+  }
+
+  async restoreVersion(id: string, versionId: string): Promise<void> {
+    await this.send('POST', `/api/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`)
   }
 
   async delete(id: string): Promise<void> {

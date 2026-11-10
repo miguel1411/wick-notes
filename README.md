@@ -155,6 +155,21 @@ de escribir). Las notas anteriores a la búsqueda se indexan solas al arrancar
 el servidor de colaboración. Está pensado para equipos pequeños (miles de
 notas) y no necesita extensiones de PostgreSQL.
 
+### Historial de versiones
+
+Menú «…» de la nota → **Historial**. Se guarda una versión:
+
+- mientras se edita, como mucho una cada 10 minutos y solo si el contenido cambió;
+- siempre antes de que la API, la CLI o un agente **reemplacen** el contenido;
+- siempre antes de **restaurar** otra versión;
+- cuando alguien pulsa *Guardar versión ahora*.
+
+Restaurar devuelve el contenido y el título a como estaban, y llega en vivo a
+quien tenga la nota abierta. Nunca se pierde nada: lo actual queda antes en el
+historial. Se conservan las 100 versiones más recientes de cada nota. Los
+agentes (MCP) pueden consultar el historial pero no restaurar: esa decisión es
+de una persona (`wick notes restore` o la web).
+
 ### Tokens de API
 
 Para usar wick notes desde la terminal, agentes de IA o scripts, crea un token
@@ -190,6 +205,8 @@ wick notes edit backups                 # abre $VISUAL/$EDITOR; avisa si alguien
 journalctl -n 50 | wick notes append "Incidencias" -f -
 wick notes export --all -o ./copia      # un .md por nota, con `# Título`
 wick notes import *.md
+wick notes history backups              # versiones; con un id de versión, su contenido
+wick notes restore backups cmx1…        # lo actual queda en el historial
 ```
 
 Al crear un token, la web muestra estos comandos ya rellenados. En Windows,
@@ -217,6 +234,7 @@ claude mcp add wick -- wick mcp
 | `notes_create`  | Crea una nota                                          | escritura |
 | `notes_append`  | Añade al final de una nota                             | escritura |
 | `notes_update`  | Reescribe una nota (por diferencias) y/o la renombra   | escritura |
+| `notes_history` | Versiones de una nota, o el contenido de una           | lectura |
 
 Con un token de solo lectura, el agente no ve las herramientas de escritura.
 Lo que escribe un agente aparece al momento en el editor de quien tenga la nota
@@ -272,6 +290,10 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/documents/search` | Búsqueda en título y contenido (`?q=`, `?limit=`) con fragmentos |
 | `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |
 | `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append" }` |
+| `GET`    | `/api/documents/:id/versions` | Historial de la nota |
+| `POST`   | `/api/documents/:id/versions` | Guarda una versión del contenido actual |
+| `GET`    | `/api/documents/:id/versions/:vid/markdown` | Contenido de una versión |
+| `POST`   | `/api/documents/:id/versions/:vid/restore` | Restaura una versión (contenido y título) |
 | `POST`   | `/api/documents/import` | Nota nueva desde `{ markdown, title?, filename? }` |
 
 ## Licencia

@@ -5,7 +5,13 @@ const route = useRoute()
 const id = computed(() => String(route.params.id))
 
 const { renameDocument, deleteDocument } = useDocuments()
-const { data: doc, error } = await useFetch<DocumentSummary>(() => `/api/documents/${id.value}`)
+const { data: doc, error, refresh: refreshDoc } = await useFetch<DocumentSummary>(() => `/api/documents/${id.value}`)
+const { refresh: refreshList } = useDocuments()
+const historyOpen = ref(false)
+
+async function onRestored() {
+  await Promise.all([refreshDoc(), refreshList()])
+}
 
 useHead({ title: () => doc.value?.title ?? 'Nota' })
 
@@ -41,6 +47,7 @@ async function onDelete() {
 
 const menu: DropdownMenuItem[][] = [
   [
+    { label: 'Historial', icon: 'i-lucide-history', onSelect: () => (historyOpen.value = true) },
     {
       label: 'Descargar Markdown',
       icon: 'i-lucide-file-down',
@@ -108,6 +115,8 @@ const menu: DropdownMenuItem[][] = [
       </div>
     </template>
   </UDashboardPanel>
+
+  <HistoryPanel v-if="doc" v-model:open="historyOpen" :document-id="id" :title="doc.title" @restored="onRestored" />
 
   <UModal
     v-model:open="confirmDelete"

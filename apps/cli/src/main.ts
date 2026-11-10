@@ -34,6 +34,8 @@ Uso:
   wick notes export --all [-o carpeta]        Exporta todas las notas
   wick notes import <fichero.md>…             Crea notas a partir de ficheros Markdown
   wick notes delete <nota> [--yes]            Elimina una nota
+  wick notes history <nota> [versión]         Historial de versiones (o una versión en Markdown)
+  wick notes restore <nota> <versión>         Restaura una versión (lo actual queda en el historial)
 
 <nota> puede ser el id, el principio del id o el título (o parte de él).
 Ejemplo con tubería:  journalctl -n 50 | wick notes append "Incidencias" -f -
@@ -150,6 +152,12 @@ export async function run(argv: string[], io: IO): Promise<number> {
         break
       case 'import':
         await notes.importFiles(ctx, rest)
+        break
+      case 'history':
+        await notes.history(ctx, rest, flags)
+        break
+      case 'restore':
+        await notes.restore(ctx, rest, flags)
         break
       case 'delete':
       case 'rm':

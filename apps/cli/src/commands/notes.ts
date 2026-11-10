@@ -248,3 +248,59 @@ export async function remove(ctx: Context, ref: string | undefined, flags: { yes
   await api.delete(note.id)
   ctx.io.stderr(`${colors(ctx.io).green('✔')} Eliminada «${note.title}»\n`)
 }
+
+// ---------------------------------------------------------------- history / restore
+
+const REASON: Record<string, string> = {
+  auto: 'edición',
+  manual: 'guardada a mano',
+  before_replace: 'antes de un reemplazo',
+  before_restore: 'antes de restaurar',
+}
+
+/** Encuentra una versión por id o principio del id (4+ caracteres). */
+async function resolveVersion(ctx: Context, noteId: string, ref: string) {
+  const versions = await ctx.api().versions(noteId)
+  const matches = versions.filter((v) => v.id === ref || (ref.length >= 4 && v.id.startsWith(ref)))
+  if (matches.length === 1) return matches[0]!
+  throw new CliError(matches.length ? `«${ref}» coincide con varias versiones; usa más caracteres del id` : `No hay ninguna versión «${ref}» (mira \`wick notes history\`)`)
+}
+
+/** Lista el historial de una nota, o muestra una versión en Markdown. */
+export async function history(ctx: Context, args: string[], flags: { json?: boolean }) {
+  const [ref, versionRef] = args
+  if (!ref) throw new UsageError('Uso: wick notes history <nota> [versión]')
+  const { io } = ctx
+  const api = ctx.api()
+  const note = await resolveNote(api, ref)
+  if (versionRef) {
+    const v = await resolveVersion(ctx, note.id, versionRef)
+    const text = await api.versionMarkdown(note.id, v.id)
+    return io.stdout(text.endsWith('\n') ? text : text + '\n')
+  }
+  const versions = await api.versions(note.id)
+  if (flags.json) return io.stdout(JSON.stringify(versions, null, 2) + '\n')
+  if (!versions.length) return io.stderr(`«${note.title}» todavía no tiene versiones.\n`)
+  const c = colors(io)
+  for (const v of versions) {
+    const who = v.author ? ` · ${v.author.name}` : ''
+    io.stdout(`${c.dim(v.id)}  ${pad(relativeTime(v.createdAt), 16)} ${REASON[v.reason] ?? v.reason}${who}\n`)
+    if (v.preview) io.stdout(`  ${c.dim(truncate(v.preview, Math.max(40, io.columns) - 2))}\n`)
+  }
+}
+
+/** Restaura una versión (contenido y título). Antes se guarda la versión actual. */
+export async function restore(ctx: Context, args: string[], flags: { yes?: boolean }) {
+  const [ref, versionRef] = args
+  if (!ref || !versionRef) throw new UsageError('Uso: wick notes restore <nota> <versión> [--yes]')
+  const api = ctx.api()
+  const note = await resolveNote(api, ref)
+  const v = await resolveVersion(ctx, note.id, versionRef)
+  if (!flags.yes) {
+    if (!ctx.io.stdinIsTTY) throw new CliError('Para restaurar sin preguntar usa --yes')
+    const answer = (await ctx.io.prompt(`¿Restaurar «${note.title}» a la versión de ${relativeTime(v.createdAt)}? (lo actual queda en el historial) [s/N] `)).trim().toLowerCase()
+    if (answer !== 's' && answer !== 'si' && answer !== 'sí') return ctx.io.stderr('Cancelado.\n')
+  }
+  await api.restoreVersion(note.id, v.id)
+  ctx.io.stderr(`${colors(ctx.io).green('✔')} Restaurada «${v.title}» a la versión de ${relativeTime(v.createdAt)}\n`)
+}

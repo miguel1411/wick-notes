@@ -27,6 +27,7 @@ model User {
   sessions  Session[]
   apiTokens ApiToken[]
   documents Document[] @relation("DocumentCreatedBy")
+  versions  DocumentVersion[]
 }
 
 model Session {
@@ -81,6 +82,36 @@ model Document {
   createdBy   User?    @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  versions    DocumentVersion[]
 
   @@index([updatedAt])
+}
+
+enum VersionReason {
+  /// Mientras se edita (como mucho una cada pocos minutos).
+  AUTO
+  /// Guardada a mano por alguien.
+  MANUAL
+  /// Justo antes de que la API, la CLI o un agente reemplazaran el contenido.
+  BEFORE_REPLACE
+  /// Justo antes de restaurar otra versión.
+  BEFORE_RESTORE
+}
+
+/// Instantánea completa de una nota en un momento dado.
+model DocumentVersion {
+  id          String        @id @default(cuid())
+  documentId  String
+  document    Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Título de la nota en ese momento.
+  title       String
+  yjsState    Bytes
+  contentText String        @default("")
+  reason      VersionReason
+  /// Quién hizo los últimos cambios (o quién guardó la versión).
+  authorId    String?
+  author      User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@index([documentId, createdAt])
 }

@@ -3,6 +3,7 @@ import { Server } from '@hocuspocus/server'
 import {
   canAccessDocument,
   loadYjsState,
+  maybeCreateAutoVersion,
   NotFoundError,
   readSessionCookie,
   saveYjsState,
@@ -59,7 +60,7 @@ export function createCollabServer(options: CollabServerOptions) {
     extensions: [
       new Database({
         fetch: ({ documentName }) => loadYjsState(documentName),
-        store: async ({ documentName, state }) => {
+        store: async ({ documentName, state, lastContext }) => {
           try {
             await saveYjsState(documentName, state)
           } catch (err) {
@@ -69,6 +70,13 @@ export function createCollabServer(options: CollabServerOptions) {
               return
             }
             throw err
+          }
+          // Historial: como mucho una versión automática cada pocos minutos.
+          // Un fallo aquí nunca debe impedir guardar.
+          try {
+            await maybeCreateAutoVersion(documentName, state, (lastContext as CollabContext | undefined)?.user?.id)
+          } catch (err) {
+            console.warn(`[collab] no se pudo crear la versión automática de ${documentName}`, err)
           }
         },
       }),

@@ -4,6 +4,7 @@ import { hashPassword, resetLoginRateLimit, toAuthUser, type AuthUser } from '..
 /** Vacía la base de datos de pruebas (en orden, por las claves foráneas). */
 export async function resetDatabase() {
   const prisma = getPrisma()
+  await prisma.documentVersion.deleteMany()
   await prisma.document.deleteMany()
   await prisma.session.deleteMany()
   await prisma.apiToken.deleteMany()

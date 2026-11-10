@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
   createDocument,
   listDocuments,
+  listVersions,
   renameDocument,
   searchDocuments,
   WickError,
@@ -109,6 +110,35 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
           '',
           body.trim() || '_(nota vacía)_',
         ].join('\n'),
+      )
+    }),
+  )
+
+  server.registerTool(
+    'notes_history',
+    {
+      title: 'Historial de una nota',
+      description:
+        'Sin `version`: lista las versiones guardadas de una nota (más reciente primero), con fecha, motivo y autor. Con `version`: devuelve el Markdown de esa versión.',
+      inputSchema: {
+        note: z.string().min(1).describe('Id o título de la nota'),
+        version: z.string().optional().describe('Id de una versión para ver su contenido'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safe(async ({ note, version }) => {
+      const doc = await resolveNote(user, note)
+      if (version) {
+        const md = await getVersionMarkdown(doc.id, version)
+        return text(md.trim() || '_(versión vacía)_')
+      }
+      const versions = await listVersions(user, doc.id)
+      if (!versions.length) return text(`«${doc.title}» todavía no tiene versiones guardadas.`)
+      const reason = { auto: 'edición', manual: 'guardada a mano', before_replace: 'antes de un reemplazo', before_restore: 'antes de restaurar' }
+      return text(
+        versions
+          .map((v) => `- ${v.createdAt.toISOString()} · ${reason[v.reason]}${v.author ? ` · ${v.author.name}` : ''} (version: ${v.id})${v.preview ? `\n  > ${v.preview}` : ''}`)
+          .join('\n'),
       )
     }),
   )

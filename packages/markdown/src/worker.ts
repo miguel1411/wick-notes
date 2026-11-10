@@ -110,11 +110,24 @@ function appendUpdate(state: Uint8Array | null, markdown: string): Uint8Array {
   return Y.encodeStateAsUpdate(ydoc, before)
 }
 
+/**
+ * Cambios Yjs que llevan el documento `state` al contenido de `target` (otra
+ * versión de la misma nota). Por diferencias, igual que replaceUpdate.
+ */
+function restoreUpdate(state: Uint8Array | null, target: Uint8Array): Uint8Array {
+  const node = docToNode(loadDoc(target)) ?? schema.topNodeType.createAndFill()!
+  const ydoc = loadDoc(state)
+  const before = Y.encodeStateVector(ydoc)
+  prosemirrorToYXmlFragment(node, ydoc.getXmlFragment(FRAGMENT))
+  return Y.encodeStateAsUpdate(ydoc, before)
+}
+
 type Request =
   | { id: number; op: 'toMarkdown'; state: Uint8Array | null }
   | { id: number; op: 'fromMarkdown'; markdown: string }
   | { id: number; op: 'replaceUpdate'; state: Uint8Array | null; markdown: string }
   | { id: number; op: 'appendUpdate'; state: Uint8Array | null; markdown: string }
+  | { id: number; op: 'restoreUpdate'; state: Uint8Array | null; target: Uint8Array }
 
 function handle(req: Request): string | Uint8Array {
   switch (req.op) {
@@ -126,6 +139,8 @@ function handle(req: Request): string | Uint8Array {
       return replaceUpdate(req.state, req.markdown)
     case 'appendUpdate':
       return appendUpdate(req.state, req.markdown)
+    case 'restoreUpdate':
+      return restoreUpdate(req.state, req.target)
   }
 }
 

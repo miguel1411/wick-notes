@@ -1,6 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Hocuspocus } from '@hocuspocus/server'
-import { isValidServiceSecret, loadYjsState, NotFoundError, SERVICE_HEADER, toAuthUser } from '@wick/core'
+import {
+  createVersion,
+  getVersionState,
+  isValidServiceSecret,
+  loadYjsState,
+  NotFoundError,
+  protectBeforeChange,
+  renameDocument,
+  SERVICE_HEADER,
+  toAuthUser,
+  type AuthUser,
+} from '@wick/core'
 import { getPrisma } from '@wick/db'
 import { getMarkdownConverter, MAX_MARKDOWN_BYTES } from '@wick/markdown'
 import * as Y from 'yjs'
@@ -17,6 +28,9 @@ import type { CollabContext } from './server'
  *   GET  /internal/documents/:id/markdown   → Markdown actual (text/markdown)
  *   POST /internal/documents/:id/markdown   { markdown, mode: 'replace'|'append', actorId }
  *   POST /internal/markdown/to-yjs          { markdown } → estado Yjs (octet-stream)
+ *   POST /internal/documents/:id/versions   { actorId } → guarda una versión del estado actual
+ *   GET  /internal/documents/:id/versions/:vid/markdown → Markdown de esa versión
+ *   POST /internal/documents/:id/versions/:vid/restore  { actorId } → la restaura (en vivo)
  */
 export async function handleInternalRequest(
   req: IncomingMessage,
@@ -50,6 +64,32 @@ export async function handleInternalRequest(
       return true
     }
 
+    const versionsMatch = url.pathname.match(/^\/internal\/documents\/([^/]+)\/versions$/)
+    if (versionsMatch && req.method === 'POST') {
+      const body = (await readJson(req)) as { actorId?: unknown }
+      const actor = await requireActor(body.actorId)
+      const id = versionsMatch[1]!
+      await requireDocument(id)
+      const version = await createVersion(id, await currentStateOrEmpty(instance, id), { reason: 'manual', authorId: actor.id })
+      return send(res, 201, version)
+    }
+
+    const versionMatch = url.pathname.match(/^\/internal\/documents\/([^/]+)\/versions\/([^/]+)\/(markdown|restore)$/)
+    if (versionMatch && versionMatch[3] === 'markdown' && req.method === 'GET') {
+      const { state } = await getVersionState(versionMatch[1]!, versionMatch[2]!)
+      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' })
+      res.end(await getMarkdownConverter().toMarkdown(state))
+      return true
+    }
+    if (versionMatch && versionMatch[3] === 'restore' && req.method === 'POST') {
+      const body = (await readJson(req)) as { actorId?: unknown }
+      const actor = await requireActor(body.actorId)
+      await restoreVersion(instance, versionMatch[1]!, versionMatch[2]!, actor)
+      res.writeHead(204)
+      res.end()
+      return true
+    }
+
     if (url.pathname === '/internal/markdown/to-yjs' && req.method === 'POST') {
       const body = (await readJson(req)) as { markdown?: unknown }
       const state = await getMarkdownConverter().fromMarkdown(requireMarkdown(body.markdown))
@@ -74,6 +114,40 @@ async function currentState(instance: Hocuspocus<CollabContext>, id: string): Pr
   return loadYjsState(id)
 }
 
+async function requireDocument(id: string) {
+  if ((await getPrisma().document.count({ where: { id } })) === 0) throw new NotFoundError('Documento')
+}
+
+async function requireActor(actorId: unknown): Promise<AuthUser> {
+  const actor = typeof actorId === 'string' ? await getPrisma().user.findUnique({ where: { id: actorId } }) : null
+  if (!actor) throw new BadRequest('actorId no corresponde a ningún usuario', 400)
+  return toAuthUser(actor)
+}
+
+async function currentStateOrEmpty(instance: Hocuspocus<CollabContext>, id: string): Promise<Uint8Array> {
+  return (await currentState(instance, id)) ?? Y.encodeStateAsUpdate(new Y.Doc())
+}
+
+/**
+ * Aplica un cambio Yjs calculado sobre el documento vivo. La conexión directa
+ * carga el documento (o usa el abierto), difunde el cambio a quien lo tenga
+ * abierto y lo guarda al desconectar.
+ */
+async function applyToLiveDocument(
+  instance: Hocuspocus<CollabContext>,
+  id: string,
+  actor: AuthUser,
+  compute: (state: Uint8Array) => Promise<Uint8Array>,
+) {
+  const connection = await instance.openDirectConnection(id, { user: actor })
+  try {
+    const update = await compute(Y.encodeStateAsUpdate(connection.document!))
+    await connection.transact((doc) => Y.applyUpdate(doc, update))
+  } finally {
+    await connection.disconnect()
+  }
+}
+
 async function writeMarkdown(
   instance: Hocuspocus<CollabContext>,
   id: string,
@@ -81,23 +155,27 @@ async function writeMarkdown(
   mode: 'replace' | 'append',
   actorId: string | null,
 ) {
-  const prisma = getPrisma()
-  if ((await prisma.document.count({ where: { id } })) === 0) throw new NotFoundError('Documento')
-  const actor = actorId ? await prisma.user.findUnique({ where: { id: actorId } }) : null
-  if (!actor) throw new BadRequest('actorId no corresponde a ningún usuario', 400)
+  await requireDocument(id)
+  const actor = await requireActor(actorId)
+  const converter = getMarkdownConverter()
+  await applyToLiveDocument(instance, id, actor, async (state) => {
+    if (mode === 'append') return converter.appendUpdate(state, markdown)
+    // Reemplazar puede borrar contenido: antes se guarda una versión.
+    await protectBeforeChange(id, state, 'before_replace', actor.id)
+    return converter.replaceUpdate(state, markdown)
+  })
+}
 
-  // Conexión directa: carga el documento (o usa el abierto), aplica el cambio,
-  // lo difunde a quien lo tenga abierto y lo guarda al desconectar.
-  const connection = await instance.openDirectConnection(id, { user: toAuthUser(actor) })
-  try {
-    const converter = getMarkdownConverter()
-    const state = Y.encodeStateAsUpdate(connection.document!)
-    const update =
-      mode === 'append' ? await converter.appendUpdate(state, markdown) : await converter.replaceUpdate(state, markdown)
-    await connection.transact((doc) => Y.applyUpdate(doc, update))
-  } finally {
-    await connection.disconnect()
-  }
+/** Restaura contenido y título de una versión; antes guarda la versión actual. */
+async function restoreVersion(instance: Hocuspocus<CollabContext>, id: string, versionId: string, actor: AuthUser) {
+  await requireDocument(id)
+  const version = await getVersionState(id, versionId)
+  await applyToLiveDocument(instance, id, actor, async (state) => {
+    await protectBeforeChange(id, state, 'before_restore', actor.id)
+    return getMarkdownConverter().restoreUpdate(state, version.state)
+  })
+  const current = await getPrisma().document.findUnique({ where: { id }, select: { title: true } })
+  if (current && current.title !== version.title) await renameDocument(actor, id, { title: version.title })
 }
 
 class BadRequest extends Error {

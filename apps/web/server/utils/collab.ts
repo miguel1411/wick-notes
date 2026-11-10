@@ -45,3 +45,17 @@ export const writeDocumentMarkdown = (id: string, actorId: string, markdown: str
 
 export const markdownToYjsState = async (markdown: string) =>
   new Uint8Array(await collabFetch<ArrayBuffer>('/internal/markdown/to-yjs', { method: 'POST', body: { markdown }, responseType: 'arrayBuffer' }))
+
+export const saveDocumentVersion = (id: string, actorId: string) =>
+  collabFetch<unknown>(`/internal/documents/${encodeURIComponent(id)}/versions`, { method: 'POST', body: { actorId } })
+
+export const getVersionMarkdown = (id: string, versionId: string) =>
+  collabFetch<string>(`/internal/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/markdown`, {
+    responseType: 'text',
+  })
+
+export const restoreDocumentVersion = (id: string, versionId: string, actorId: string) =>
+  collabFetch<void>(`/internal/documents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`, {
+    method: 'POST',
+    body: { actorId },
+  })

@@ -120,6 +120,20 @@ describe('conversión Markdown ↔ Yjs', () => {
     expect(await converter.toMarkdown(Y.encodeStateAsUpdate(browser))).toBe(result)
   })
 
+  it('restaura otra versión por diferencias, también a un documento vacío', async () => {
+    const v1 = await converter.fromMarkdown('# Plan\n\n* uno\n* dos')
+    const live = new Y.Doc()
+    Y.applyUpdate(live, v1)
+    Y.applyUpdate(live, await converter.replaceUpdate(Y.encodeStateAsUpdate(live), '# Plan nuevo\n\nTodo distinto.'))
+    expect(await converter.toMarkdown(Y.encodeStateAsUpdate(live))).toBe('# Plan nuevo\n\nTodo distinto.\n')
+
+    Y.applyUpdate(live, await converter.restoreUpdate(Y.encodeStateAsUpdate(live), v1))
+    expect(await converter.toMarkdown(Y.encodeStateAsUpdate(live))).toBe('# Plan\n\n* uno\n* dos\n')
+
+    Y.applyUpdate(live, await converter.restoreUpdate(Y.encodeStateAsUpdate(live), Y.encodeStateAsUpdate(new Y.Doc())))
+    expect((await converter.toMarkdown(Y.encodeStateAsUpdate(live))).trim()).toBe('')
+  })
+
   it('convierte documentos grandes en un tiempo razonable', async () => {
     const big = Array.from({ length: 2000 }, (_, i) => `## Sección ${i}\n\nTexto de la sección ${i} con **algo** de formato.`).join('\n\n')
     const t0 = Date.now()

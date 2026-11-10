@@ -1,6 +1,8 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider'
 import {
   createDocument,
+  listVersions,
+  renameDocument,
   createSession,
   getServiceSecret,
   hashPassword,
@@ -135,6 +137,41 @@ describe('API interna del servidor de colaboración', () => {
 
     expect((await post({ mode: 'replace', markdown: '# Diario\n\nReescrito.' })).status).toBe(204)
     await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nReescrito.\n', 'replace en el navegador')
+    client.close()
+  })
+
+  it('historial: protege antes de reemplazar, guarda a mano y restaura en vivo', async () => {
+    const id = await newDoc('# Plan\n\nVersión buena.')
+    const client = await openClient(id)
+    const json = (path: string, body: object) =>
+      fetch(url(path), { method: 'POST', headers: { ...auth(), 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+    // Un agente reemplaza todo → antes se guarda la versión buena.
+    await json(`/internal/documents/${id}/markdown`, { mode: 'replace', markdown: 'Contenido estropeado', actorId: user.id })
+    await renameDocument(user, id, { title: 'Título cambiado' })
+    let versions = await listVersions(user, id)
+    expect(versions.map((v) => v.reason)).toEqual(['before_replace'])
+    expect(versions[0]!.preview).toBe('Plan Versión buena.')
+    expect(versions[0]!.title).toBe('Prueba')
+
+    // Markdown de la versión.
+    const res = await fetch(url(`/internal/documents/${id}/versions/${versions[0]!.id}/markdown`), { headers: auth() })
+    expect(await res.text()).toBe('# Plan\n\nVersión buena.\n')
+
+    // Guardar a mano el estado actual.
+    const manual = await json(`/internal/documents/${id}/versions`, { actorId: user.id })
+    expect(manual.status).toBe(201)
+    expect(((await manual.json()) as { reason: string }).reason).toBe('manual')
+
+    // Restaurar: el navegador lo ve en vivo, vuelve el título y no se pierde nada.
+    expect((await json(`/internal/documents/${id}/versions/${versions[0]!.id}/restore`, { actorId: user.id })).status).toBe(204)
+    await waitFor(async () => (await markdownOf(client.ydoc)) === '# Plan\n\nVersión buena.\n', 'restauración en el navegador')
+    expect((await getPrisma().document.findUniqueOrThrow({ where: { id } })).title).toBe('Prueba')
+    versions = await listVersions(user, id)
+    expect(versions.map((v) => v.reason)).toEqual(['manual', 'before_replace'])
+    // (no hay before_restore: el estado actual ya estaba guardado en la versión manual)
+
+    expect((await json(`/internal/documents/${id}/versions/no-existe/restore`, { actorId: user.id })).status).toBe(404)
     client.close()
   })
 

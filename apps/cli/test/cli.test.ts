@@ -65,6 +65,18 @@ function startServer() {
       const title = json.title || h1 || String(json.filename ?? '').replace(/\.md$/, '') || 'Sin título'
       return send(201, summary(addNote(title, h1 && !json.title ? lines.slice(2).join('\n') : json.markdown)))
     }
+    if ((m = p.match(/^\/api\/documents\/([^/]+)\/versions$/))) {
+      return send(200, [
+        { id: 'cv00000000000000000000002', createdAt: new Date().toISOString(), title: 'Diario', reason: 'manual', author: { id: 'u1', name: 'Ana' }, preview: 'segunda' },
+        { id: 'cv00000000000000000000001', createdAt: new Date(Date.now() - 3600_000).toISOString(), title: 'Diario', reason: 'auto', author: null, preview: 'primera' },
+      ])
+    }
+    if ((m = p.match(/^\/api\/documents\/([^/]+)\/versions\/([^/]+)\/(markdown|restore)$/))) {
+      const n = find(m[1]!)!
+      if (m[3] === 'markdown') return send(200, `contenido de ${m[2]}`)
+      n.body = `restaurada ${m[2]}`
+      return send(204)
+    }
     if ((m = p.match(/^\/api\/documents\/([^/]+)\/markdown$/))) {
       const n = find(m[1]!)
       if (!n) return send(404, { message: 'Documento no encontrado' })
@@ -314,6 +326,20 @@ describe('wick notes', () => {
     onNextMarkdownRead = null
     await wick(['edit', n.id, '--force'], { env: { ...loggedIn, WICK_EDITOR: `node "${editor}"` } })
     expect(n.body).toBe('mi versión\n')
+  })
+
+  it('historial y restaurar', async () => {
+    const n = addNote('Diario', 'actual')
+    const list = await wick(['history', 'Diario'], { env: loggedIn })
+    expect(list.out).toContain('guardada a mano · Ana')
+    expect(list.out).toContain('primera')
+    expect((await wick(['history', 'Diario', 'cv00000000000000000000001'], { env: loggedIn })).out).toBe('contenido de cv00000000000000000000001\n')
+    expect((await wick(['history', 'Diario', 'cv0000'], { env: loggedIn })).err).toContain('varias versiones')
+
+    await wick(['restore', 'Diario', 'cv00000000000000000000001'], { env: loggedIn, answers: ['n'] })
+    expect(n.body).toBe('actual')
+    await wick(['restore', 'Diario', 'cv00000000000000000000001', '--yes'], { env: loggedIn })
+    expect(n.body).toBe('restaurada cv00000000000000000000001')
   })
 
   it('ayuda, versión y errores de uso', async () => {
