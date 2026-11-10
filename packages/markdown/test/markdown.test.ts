@@ -134,6 +134,47 @@ describe('conversión Markdown ↔ Yjs', () => {
     expect((await converter.toMarkdown(Y.encodeStateAsUpdate(live))).trim()).toBe('')
   })
 
+  it('no deja &#x20; ni &#x9; por espacios al principio o al final de una línea', async () => {
+    // Estado con la forma que genera el editor (fragmento «prosemirror»).
+    const state = (blocks: Array<[string, string | null]>) => {
+      const d = new Y.Doc()
+      const f = d.getXmlFragment('prosemirror')
+      for (const [name, text] of blocks) {
+        const el = new Y.XmlElement(name)
+        if (text !== null) el.insert(0, [new Y.XmlText(text)])
+        f.push([el])
+      }
+      return Y.encodeStateAsUpdate(d)
+    }
+    const md = await converter.toMarkdown(
+      state([
+        ['paragraph', ' Hola '],
+        ['paragraph', '\tsangrado'],
+        ['paragraph', '   '],
+        ['heading', '  Título  '],
+        ['paragraph', 'entre   palabras se respeta'],
+      ]),
+    )
+    expect(md).not.toMatch(/&#x(20|9);/)
+    expect(md).toContain('Hola\n')
+    expect(md).toContain('sangrado\n')
+    expect(md).toContain('# Título\n')
+    expect(md).toContain('entre   palabras se respeta')
+  })
+
+  it('respeta los espacios dentro de código', async () => {
+    // (`` ` x ` `` sería «x» según CommonMark; con espacios a un solo lado se conservan.)
+    const md = await converter.toMarkdown(await converter.fromMarkdown('```\n  sangrado\n```\n\n`  x` al inicio'))
+    expect(md).toContain('```\n  sangrado\n```')
+    expect(md).toContain('`  x` al inicio')
+  })
+
+  it('quita espacios alrededor de los saltos de línea', async () => {
+    const md = await converter.toMarkdown(await converter.fromMarkdown('uno\\\n dos'))
+    expect(md).not.toMatch(/&#x20;/)
+    expect(md).toMatch(/uno\\?\n\s*dos|uno\s+dos/)
+  })
+
   it('convierte documentos grandes en un tiempo razonable', async () => {
     const big = Array.from({ length: 2000 }, (_, i) => `## Sección ${i}\n\nTexto de la sección ${i} con **algo** de formato.`).join('\n\n')
     const t0 = Date.now()

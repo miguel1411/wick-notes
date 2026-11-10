@@ -25,6 +25,7 @@ console.warn = (...args: unknown[]) => {
 
 const { Crepe, CrepeFeature } = await import('@milkdown/crepe')
 const { parserCtx, schemaCtx, serializerCtx } = await import('@milkdown/kit/core')
+const { Transform } = await import('@milkdown/kit/prose/transform')
 const Y = await import('yjs')
 const { prosemirrorToYXmlFragment, yXmlFragmentToProseMirrorRootNode } = await import('y-prosemirror')
 
@@ -66,9 +67,52 @@ function docToNode(ydoc: InstanceType<typeof Y.Doc>): Node | null {
   return yXmlFragmentToProseMirrorRootNode(fragment, schema) as Node
 }
 
+/**
+ * Quita los espacios y tabuladores del principio y del final de cada línea de
+ * texto (párrafos, encabezados…, y alrededor de los saltos de línea). En Markdown
+ * no significan nada, y el serializador los escaparía como `&#x20;` o `&#x9;`.
+ * No toca bloques de código ni código en línea, donde sí importan.
+ */
+function trimLineWhitespace(doc: Node): Node {
+  const ranges: [number, number][] = []
+  const hasCode = (n: Node) => n.marks.some((m) => m.type.spec.code)
+
+  doc.descendants((block, pos) => {
+    if (!block.isTextblock) return true
+    if (block.type.spec.code) return false
+    // Tramos de la línea separados por saltos de línea (hardbreak).
+    const segments: { node: Node; from: number }[][] = [[]]
+    block.forEach((child, offset) => {
+      if (child.type.name === 'hardbreak') segments.push([])
+      else segments.at(-1)!.push({ node: child, from: pos + 1 + offset })
+    })
+    for (const seg of segments) {
+      const first = seg[0]
+      const last = seg.at(-1)
+      if (first?.node.isText && !hasCode(first.node)) {
+        const lead = first.node.text!.match(/^[ \t]+/)?.[0].length ?? 0
+        if (lead) ranges.push([first.from, first.from + lead])
+      }
+      if (last?.node.isText && !hasCode(last.node)) {
+        const text = last.node.text!
+        const trail = text.match(/[ \t]+$/)?.[0].length ?? 0
+        // Si el tramo es solo espacios, ya lo cubre el recorte del principio.
+        const start = last.from + text.length - trail
+        if (trail && !(last === first && trail === text.length)) ranges.push([start, last.from + text.length])
+      }
+    }
+    return false
+  })
+
+  if (!ranges.length) return doc
+  const tr = new Transform(doc)
+  for (const [from, to] of ranges.sort((a, b) => b[0] - a[0])) tr.delete(from, to)
+  return tr.doc as Node
+}
+
 function toMarkdown(state: Uint8Array | null): string {
   const node = docToNode(loadDoc(state))
-  return node ? serializer(node) : ''
+  return node ? serializer(trimLineWhitespace(node)) : ''
 }
 
 /** Estado completo de un documento nuevo con este Markdown. */
