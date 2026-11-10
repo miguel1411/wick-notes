@@ -1,53 +1,24 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, TreeItem } from '@nuxt/ui'
+import type { DropdownMenuItem } from '@nuxt/ui'
+import type { TreeContext } from './TreeFolder.vue'
 
 /**
  * Carpetas y notas del espacio actual. Las carpetas tienen su menú (nueva nota,
- * subcarpeta, renombrar, eliminar); las notas se abren al pulsarlas.
+ * subcarpeta, renombrar, eliminar); las notas son enlaces.
  */
 const route = useRoute()
 const toast = useToast()
 const { current, canWrite, folders, refreshFolders } = useWorkspaces()
 const { documents, createDocument, refreshAll, run } = useDocuments()
 
-interface Node extends TreeItem {
-  key: string
-  folderId?: string
-  children?: Node[]
-}
-
 const activeId = computed(() => (route.path.startsWith('/d/') ? String(route.params.id) : null))
-const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' })
+const byName = (a: string, b: string) => a.localeCompare(b, 'es', { sensitivity: 'base' })
+const rootFolders = computed(() => folders.value.filter((f) => !f.parentId).sort((a, b) => byName(a.name, b.name)))
+const rootNotes = computed(() => documents.value.filter((d) => !d.folderId).sort((a, b) => byName(a.title, b.title)))
 
-const items = computed<Node[]>(() => {
-  const childFolders = (parentId: string | null): Node[] =>
-    folders.value
-      .filter((f) => f.parentId === parentId)
-      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
-      .map((f) => ({
-        key: `f:${f.id}`,
-        folderId: f.id,
-        label: f.name,
-        icon: 'i-lucide-folder',
-        slot: 'folder',
-        defaultExpanded: containsActive(f.id),
-        children: [...childFolders(f.id), ...notesIn(f.id)],
-      }))
-  const notesIn = (folderId: string | null): Node[] =>
-    documents.value
-      .filter((d) => d.folderId === folderId)
-      .sort(byTitle)
-      .map((d) => ({
-        key: `d:${d.id}`,
-        label: d.title,
-        icon: 'i-lucide-file-text',
-        class: d.id === activeId.value ? 'text-primary font-medium' : undefined,
-        onSelect: () => navigateTo(`/d/${d.id}`),
-      }))
-  return [...childFolders(null), ...notesIn(null)]
-})
-
-/** ¿La nota abierta está dentro de esta carpeta (a cualquier profundidad)? */
+// Carpetas desplegadas: lo que la persona abre o cierra, y por defecto las que
+// contienen la nota abierta. En useState para que servidor y navegador coincidan.
+const toggled = useState<Record<string, boolean>>('tree-expanded', () => ({}))
 function containsActive(folderId: string): boolean {
   const doc = documents.value.find((d) => d.id === activeId.value)
   for (let id = doc?.folderId ?? null; id; id = folders.value.find((f) => f.id === id)?.parentId ?? null) {
@@ -55,6 +26,8 @@ function containsActive(folderId: string): boolean {
   }
   return false
 }
+const isExpanded = (id: string) => toggled.value[id] ?? containsActive(id)
+const toggle = (id: string) => (toggled.value = { ...toggled.value, [id]: !isExpanded(id) })
 
 // --- Acciones de carpetas ---
 const dialog = reactive({ open: false, mode: 'create' as 'create' | 'rename', parentId: null as string | null, folderId: '', initial: '' })
@@ -62,6 +35,8 @@ const deleteTarget = ref<{ id: string; name: string } | null>(null)
 
 function newFolder(parentId: string | null = null) {
   Object.assign(dialog, { open: true, mode: 'create', parentId, folderId: '', initial: '' })
+  // La carpeta donde se crea queda desplegada para ver el resultado.
+  if (parentId) toggled.value = { ...toggled.value, [parentId]: true }
 }
 defineExpose({ newFolder })
 
@@ -85,11 +60,8 @@ async function confirmDelete() {
   await Promise.all([refreshFolders(), refreshAll()])
 }
 
-/** La ranura del árbol no conserva el tipo de los elementos. */
-const asNode = (item: unknown) => item as Node
-
-function folderMenu(item: Node): DropdownMenuItem[][] {
-  const id = item.folderId!
+function folderMenu(folder: FolderRow): DropdownMenuItem[][] {
+  const id = folder.id
   return [
     [
       { label: 'Nueva nota aquí', icon: 'i-lucide-file-plus', onSelect: () => createDocument({ folderId: id }) },
@@ -97,31 +69,23 @@ function folderMenu(item: Node): DropdownMenuItem[][] {
       {
         label: 'Renombrar',
         icon: 'i-lucide-pencil',
-        onSelect: () => Object.assign(dialog, { open: true, mode: 'rename', folderId: id, initial: item.label }),
+        onSelect: () => Object.assign(dialog, { open: true, mode: 'rename', folderId: id, initial: folder.name }),
       },
     ],
-    [{ label: 'Eliminar carpeta', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (deleteTarget.value = { id, name: item.label! }) }],
+    [{ label: 'Eliminar carpeta', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (deleteTarget.value = { id, name: folder.name }) }],
   ]
 }
+provide<TreeContext>('workspace-tree', { folders, documents, activeId, canWrite, isExpanded, toggle, folderMenu })
 </script>
 
 <template>
   <div>
-    <UTree v-if="items.length" :items="items" :get-key="(i: Node) => i.key" color="neutral" size="sm">
-      <template #folder-trailing="{ item }">
-        <UDropdownMenu v-if="canWrite" :items="folderMenu(asNode(item))" :content="{ align: 'start' }">
-          <UButton
-            icon="i-lucide-ellipsis"
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            class="ms-auto opacity-60 hover:opacity-100"
-            :aria-label="`Opciones de la carpeta ${asNode(item).label}`"
-            @click.stop
-          />
-        </UDropdownMenu>
-      </template>
-    </UTree>
+    <nav v-if="rootFolders.length || rootNotes.length" aria-label="Carpetas y notas">
+      <ul class="space-y-px">
+        <TreeFolder v-for="f in rootFolders" :key="f.id" :folder="f" />
+        <TreeNote v-for="d in rootNotes" :key="d.id" :doc="d" />
+      </ul>
+    </nav>
     <p v-else class="px-2.5 text-sm text-dimmed">{{ canWrite ? 'Todavía no hay notas.' : 'Este espacio está vacío.' }}</p>
 
     <NameDialog
