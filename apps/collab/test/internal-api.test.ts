@@ -26,7 +26,10 @@ const auth = () => ({ [SERVICE_HEADER]: getServiceSecret() })
 
 beforeAll(async () => {
   const prisma = getPrisma()
+  await prisma.documentVersion.deleteMany()
   await prisma.document.deleteMany()
+  await prisma.folder.deleteMany()
+  await prisma.workspace.deleteMany({ where: { id: { not: 'general' } } })
   await prisma.session.deleteMany()
   await prisma.user.deleteMany()
   user = toAuthUser(

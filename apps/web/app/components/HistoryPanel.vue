@@ -8,7 +8,7 @@ interface Version {
   preview: string
 }
 
-const props = defineProps<{ documentId: string; title: string }>()
+const props = withDefaults(defineProps<{ documentId: string; title: string; canEdit?: boolean }>(), { canEdit: true })
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ restored: [] }>()
 
@@ -124,6 +124,7 @@ watch(open, (isOpen) => {
       <div class="flex h-full min-h-0 flex-col gap-4 md:flex-row">
         <div class="flex min-h-0 flex-col gap-3 md:w-72 md:shrink-0">
           <UButton
+            v-if="canEdit"
             icon="i-lucide-bookmark-plus"
             label="Guardar versión ahora"
             color="neutral"
@@ -170,7 +171,7 @@ watch(open, (isOpen) => {
                   {{ selected.author ? `${REASONS[selected.reason].who} ${selected.author.name}` : REASONS[selected.reason].label }}
                 </p>
               </div>
-              <UButton icon="i-lucide-history" label="Restaurar esta versión" size="sm" @click="confirmRestore = true" />
+              <UButton v-if="canEdit" icon="i-lucide-history" label="Restaurar esta versión" size="sm" @click="confirmRestore = true" />
             </div>
             <div class="min-h-0 flex-1 overflow-auto p-3">
               <USkeleton v-if="previewLoading" class="h-24 w-full" />

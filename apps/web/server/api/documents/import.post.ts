@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const content = heading && (!explicit || heading === explicit) ? body : input.markdown
 
   const state = await markdownToYjsState(content)
-  const doc = await runCore(() => createDocument(user, { title }, state), event)
+  const doc = await runCore(() => createDocument(user, { title, workspaceId: input.workspaceId, folderId: input.folderId }, state), event)
   setResponseStatus(event, 201)
   return doc
 })

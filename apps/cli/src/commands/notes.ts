@@ -37,8 +37,27 @@ function printList(ctx: Context, notes: NoteSummary[], json: boolean) {
   }
 }
 
-export async function list(ctx: Context, flags: { json?: boolean; limit?: string }) {
-  let notes = await ctx.api().list()
+/** Espacio por id o nombre (sin distinguir mayúsculas). */
+export async function resolveWorkspace(ctx: Context, ref: string | undefined): Promise<string | undefined> {
+  if (!ref) return undefined
+  const all = await ctx.api().workspaces()
+  const ws = all.find((w) => w.id === ref) ?? all.find((w) => w.name.toLowerCase() === ref.trim().toLowerCase())
+  if (!ws) throw new CliError(`No hay ningún espacio «${ref}». Tus espacios: ${all.map((w) => w.name).join(', ')}`)
+  return ws.id
+}
+
+export async function workspaces(ctx: Context, flags: { json?: boolean }) {
+  const all = await ctx.api().workspaces()
+  if (flags.json) return ctx.io.stdout(JSON.stringify(all, null, 2) + '\n')
+  const c = colors(ctx.io)
+  const role = { owner: 'propietario', editor: 'editor', viewer: 'solo lectura' }
+  for (const w of all) {
+    ctx.io.stdout(`${c.dim(w.id)}  ${pad(truncate(w.name, 30), 30)}  ${pad(w.everyone ? 'para todos' : role[w.role], 13)}  ${c.dim(`${w.documentCount} notas`)}\n`)
+  }
+}
+
+export async function list(ctx: Context, flags: { json?: boolean; limit?: string; workspace?: string }) {
+  let notes = await ctx.api().list(undefined, await resolveWorkspace(ctx, flags.workspace))
   const limit = Number(flags.limit)
   if (flags.limit && (!Number.isInteger(limit) || limit < 1)) throw new UsageError('--limit debe ser un número positivo')
   if (limit) notes = notes.slice(0, limit)
@@ -135,23 +154,25 @@ async function readContent(ctx: Context, flags: { file?: string }, positional: s
   return null
 }
 
-export async function create(ctx: Context, args: string[], flags: { file?: string; json?: boolean }) {
+export async function create(ctx: Context, args: string[], flags: { file?: string; json?: boolean; workspace?: string }) {
   const [title, ...rest] = args
   if (!title?.trim()) throw new UsageError('Uso: wick notes create "Título" [contenido…] [-f nota.md | -f -]')
   const api = ctx.api()
   const content = await readContent(ctx, flags, rest)
-  const note = content?.trim() ? await api.importMarkdown({ title, markdown: content }) : await api.create(title)
+  const workspaceId = await resolveWorkspace(ctx, flags.workspace)
+  const note = content?.trim() ? await api.importMarkdown({ title, markdown: content, workspaceId }) : await api.create(title, workspaceId)
   if (flags.json) return ctx.io.stdout(JSON.stringify(note, null, 2) + '\n')
   ctx.io.stdout(`${note.id}\n`)
   ctx.io.stderr(`${colors(ctx.io).green('✔')} Creada «${note.title}» · ${ctx.server()}/d/${note.id}\n`)
 }
 
-export async function importFiles(ctx: Context, files: string[]) {
+export async function importFiles(ctx: Context, files: string[], flags: { workspace?: string } = {}) {
   if (!files.length) throw new UsageError('Uso: wick notes import <fichero.md>…')
   const api = ctx.api()
+  const workspaceId = await resolveWorkspace(ctx, flags.workspace)
   for (const file of files) {
     const path = resolve(ctx.io.cwd, file)
-    const note = await api.importMarkdown({ markdown: await readFile(path, 'utf8'), filename: basename(path) })
+    const note = await api.importMarkdown({ markdown: await readFile(path, 'utf8'), filename: basename(path), workspaceId })
     ctx.io.stdout(`${note.id}  ${note.title}\n`)
   }
 }

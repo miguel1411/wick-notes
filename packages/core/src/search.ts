@@ -2,6 +2,7 @@ import { getPrisma, Prisma } from '@wick/db'
 import * as Y from 'yjs'
 import { requireActor, type AuthUser } from './auth/actor'
 import type { DocumentSummary } from './documents'
+import { readableDocumentsWhere } from './workspaces'
 
 /**
  * Minúsculas, sin tildes y sin guiones: «Canción» y «cancion», o «Wi-Fi» y «wifi»,
@@ -101,6 +102,8 @@ function makeSnippet(text: string, terms: string[]): string {
 const resultSelect = {
   id: true,
   title: true,
+  workspaceId: true,
+  folderId: true,
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { id: true, name: true } },
@@ -125,7 +128,10 @@ export async function searchDocuments(
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
 
   const where: Prisma.DocumentWhereInput = {
-    AND: terms.map((t) => ({ OR: [{ titleSearch: { contains: t } }, { contentSearch: { contains: t } }] })),
+    AND: [
+      await readableDocumentsWhere(actor),
+      ...terms.map((t) => ({ OR: [{ titleSearch: { contains: t } }, { contentSearch: { contains: t } }] })),
+    ],
   }
   const rows = await getPrisma().document.findMany({
     where,
@@ -146,6 +152,8 @@ export async function searchDocuments(
     .map(({ r, titleMatch }) => ({
       id: r.id,
       title: r.title,
+      workspaceId: r.workspaceId,
+      folderId: r.folderId,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       createdBy: r.createdBy,

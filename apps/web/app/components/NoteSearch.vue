@@ -4,11 +4,14 @@ import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
 interface SearchResult {
   id: string
   title: string
+  workspaceId: string
   snippet: string
   updatedAt: string
 }
 
 const { documents } = useDocuments()
+const { workspaces, current } = useWorkspaces()
+const wsName = (id: string) => workspaces.value.find((w) => w.id === id)?.name
 const searchTerm = ref('')
 const results = ref<SearchResult[]>([])
 const loading = ref(false)
@@ -57,6 +60,7 @@ const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
       ignoreFilter: true,
       items: results.value.map((r) => ({
         label: r.title,
+        suffix: r.workspaceId !== current.value?.id ? wsName(r.workspaceId) : undefined,
         description: r.snippet || undefined,
         icon: 'i-lucide-file-text',
         to: `/d/${r.id}`,

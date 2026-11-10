@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 
-const props = defineProps<{ documentId: string }>()
+const props = defineProps<{ documentId: string; readonly?: boolean }>()
 const emit = defineEmits<{
   status: [status: SyncStatus]
   peers: [peers: Peer[]]
@@ -115,6 +115,8 @@ onMounted(async () => {
   crepe.editor.action((ctx) => {
     ctx.get(collabServiceCtx).bindDoc(ydoc!).setAwareness(awareness!).connect()
   })
+  // Lectores: el servidor ya descarta sus cambios; aquí además no se pueden escribir.
+  if (props.readonly) crepe.setReadonly(true)
   ready.value = true
   emitPeers()
 })

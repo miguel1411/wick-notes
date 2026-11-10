@@ -5,10 +5,9 @@
 Base de conocimiento en Markdown, autoalojada y colaborativa. La visión completa
 está en [PRODUCT.md](PRODUCT.md).
 
-> **Estado:** en desarrollo. Ya hay usuarios con inicio de sesión, y se pueden
-> crear, buscar, renombrar, eliminar, importar y exportar (Markdown) notas y
-> editarlas entre varias personas en tiempo real, con guardado automático. Todas las personas con cuenta ven y editan todas
-> las notas (los espacios de trabajo y permisos por nota llegarán después).
+> **Estado:** en desarrollo, con todas las funciones básicas de PRODUCT.md:
+> notas Markdown colaborativas en tiempo real, espacios de trabajo con
+> permisos, carpetas, búsqueda, historial, CLI, MCP y respaldos.
 
 ## Instalación (Docker Compose)
 
@@ -97,6 +96,28 @@ Con un proxy inverso delante (HTTPS):
   intentos de login) y el esquema HTTPS (cookie `Secure`). Sin proxy, déjalo en
   `false`: si no, cualquiera podría falsear su IP con cabeceras.
 
+### Espacios de trabajo, carpetas y permisos
+
+Las notas viven en **espacios de trabajo** (selector arriba en la barra lateral)
+y, dentro de ellos, en **carpetas** anidadas.
+
+| Rol en el espacio | Puede |
+|-------------------|-------|
+| Propietario       | Todo lo de editor, y cambiar nombre, miembros y borrar el espacio |
+| Editor            | Leer, crear, editar, mover y borrar notas y carpetas |
+| Solo lectura      | Leer (el editor no deja escribir y el servidor descarta cualquier cambio) |
+
+- El espacio **General** es *para todos*: cualquier persona con cuenta, también
+  las nuevas, es editora. Al actualizar desde una versión sin espacios, todas
+  las notas pasan a General, así que nadie pierde acceso a nada.
+- Cualquiera puede crear espacios (empiezan privados: solo quien los crea) e
+  invitar a otras personas desde *Ajustes del espacio*. Un espacio privado y sus
+  notas no aparecen para nadie más: ni en la lista, ni en la búsqueda, ni por la
+  API, la CLI o MCP. Los administradores de la instancia ven todos.
+- Mover una nota a otro espacio cambia quién puede verla.
+- Borrar una carpeta no borra notas: su contenido pasa a la carpeta superior.
+  Un espacio solo se puede borrar vacío.
+
 ### Usuarios y seguridad
 
 - Las cuentas las crea un administrador. No hay registro abierto.
@@ -181,7 +202,8 @@ curl -H "Authorization: Bearer wick_…" http://localhost:3120/api/documents
 
 - **Solo lectura** (listar, leer) o **lectura y escritura** (también crear,
   modificar y borrar notas). Actúan con la identidad de quien los crea.
-- Solo sirven para la API de notas (`/api/documents…`) y `/api/auth/state`:
+- Solo sirven para la API de notas (`/api/documents…`, `/api/workspaces…`,
+  `/api/folders…`) y `/api/auth/state`, y siempre con los permisos de su dueño:
   con un token no se gestionan usuarios, contraseñas ni otros tokens.
 - Caducidad opcional; se revocan al momento desde la misma pantalla. Si se
   desactiva la cuenta, sus tokens dejan de funcionar. Solo se guarda su hash.
@@ -197,7 +219,8 @@ wick login --server http://servidor:3120 --token wick_…   # token de Mi cuenta
 ```
 
 ```bash
-wick notes list                         # recientes primero (--json para scripts)
+wick workspaces                         # tus espacios y tu rol
+wick notes list                         # recientes primero (-w espacio, --json para scripts)
 wick notes search postgres réplica      # en títulos y contenido, con fragmento
 wick notes get "red de casa"            # por id, principio del id o título
 wick notes create "Nueva nota" "texto"  # o -f nota.md, o -f - para leer de stdin
@@ -228,10 +251,10 @@ claude mcp add wick -- wick mcp
 
 | Herramienta     | Qué hace                                               | Token  |
 |-----------------|--------------------------------------------------------|--------|
-| `notes_list`    | Lista notas recientes                                  | lectura |
+| `notes_list`    | Lista notas recientes (opcional: de un espacio)        | lectura |
 | `notes_search`  | Busca en títulos y contenido, con fragmentos           | lectura |
 | `notes_read`    | Lee una nota (por id o título) en Markdown             | lectura |
-| `notes_create`  | Crea una nota                                          | escritura |
+| `notes_create`  | Crea una nota (opcional: en un espacio)                | escritura |
 | `notes_append`  | Añade al final de una nota                             | escritura |
 | `notes_update`  | Reescribe una nota (por diferencias) y/o la renombra   | escritura |
 | `notes_history` | Versiones de una nota, o el contenido de una           | lectura |
@@ -282,10 +305,17 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/tokens`          | Mis tokens de API (solo con sesión)  |
 | `POST`   | `/api/tokens`          | `{ name, scope: "read" \| "write", expiresInDays? }` → token (una vez) |
 | `DELETE` | `/api/tokens/:id`      | Revoca un token propio               |
-| `GET`    | `/api/documents`       | Lista, de la más reciente a la más antigua (`?q=` título, `?limit=`) |
-| `POST`   | `/api/documents`       | Crea (`{ "title"?: string }`)        |
+| `GET`    | `/api/workspaces`      | Mis espacios y mi rol en cada uno     |
+| `POST`   | `/api/workspaces`      | `{ name, everyone? }` (quien lo crea es propietario) |
+| `PATCH`/`DELETE` | `/api/workspaces/:id` | Renombrar / *para todos* / borrar (vacío) |
+| `GET`    | `/api/workspaces/:id/members` | Miembros                       |
+| `PUT`/`DELETE` | `/api/workspaces/:id/members/:userId` | `{ role: "owner" \| "editor" \| "viewer" }` / quitar |
+| `GET`/`POST` | `/api/workspaces/:id/folders` | Carpetas / `{ name, parentId? }` |
+| `PATCH`/`DELETE` | `/api/folders/:id` | `{ name?, parentId? }` / borrar (el contenido sube) |
+| `GET`    | `/api/documents`       | Lista, de la más reciente a la más antigua (`?workspace=`, `?q=` título, `?limit=`) |
+| `POST`   | `/api/documents`       | Crea (`{ title?, workspaceId?, folderId? }`) |
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |
-| `PATCH`  | `/api/documents/:id`   | Renombra (`{ "title": string }`)     |
+| `PATCH`  | `/api/documents/:id`   | `{ title?, workspaceId?, folderId? }` (renombrar y/o mover) |
 | `DELETE` | `/api/documents/:id`   | Elimina                              |
 | `GET`    | `/api/documents/search` | Búsqueda en título y contenido (`?q=`, `?limit=`) con fragmentos |
 | `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |

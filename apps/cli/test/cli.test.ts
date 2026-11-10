@@ -48,6 +48,12 @@ function startServer() {
     const find = (id: string) => notes.find((n) => n.id === id)
     let m: RegExpMatchArray | null
 
+    if (p === '/api/workspaces') {
+      return send(200, [
+        { id: 'general', name: 'General', everyone: true, role: 'editor', documentCount: notes.length },
+        { id: 'wsprivado', name: 'Personal', everyone: false, role: 'owner', documentCount: 0 },
+      ])
+    }
     if (p === '/api/auth/state') return send(200, { setupRequired: false, user: { id: 'u1', username: 'ana', name: 'Ana', role: 'ADMIN' } })
     if (p === '/api/documents' && req.method === 'GET') {
       const q = url.searchParams.get('q')?.toLowerCase()
@@ -58,7 +64,11 @@ function startServer() {
       const hits = notes.filter((n) => terms.every((t) => `${n.title} ${n.body}`.toLowerCase().includes(t)))
       return send(200, hits.map((n) => ({ ...summary(n), snippet: n.body.slice(0, 40), titleMatch: false })))
     }
-    if (p === '/api/documents' && req.method === 'POST') return send(201, summary(addNote(json.title)))
+    if (p === '/api/documents' && req.method === 'POST') {
+      const n = addNote(json.title)
+      ;(n as Note & { workspaceId?: string }).workspaceId = json.workspaceId
+      return send(201, summary(n))
+    }
     if (p === '/api/documents/import') {
       const lines = String(json.markdown).split('\n')
       const h1 = lines[0]?.startsWith('# ') ? lines[0].slice(2) : null
@@ -340,6 +350,17 @@ describe('wick notes', () => {
     expect(n.body).toBe('actual')
     await wick(['restore', 'Diario', 'cv00000000000000000000001', '--yes'], { env: loggedIn })
     expect(n.body).toBe('restaurada cv00000000000000000000001')
+  })
+
+  it('espacios de trabajo', async () => {
+    const ws = await wick(['workspaces'], { env: loggedIn })
+    expect(ws.out).toContain('General')
+    expect(ws.out).toContain('para todos')
+    expect(ws.out).toContain('propietario')
+    await wick(['create', 'En personal', '-w', 'personal'], { env: loggedIn })
+    expect((notes[0] as Note & { workspaceId?: string }).workspaceId).toBe('wsprivado')
+    const bad = await wick(['create', 'x', '-w', 'nope'], { env: loggedIn })
+    expect(bad.err).toContain('Tus espacios: General, Personal')
   })
 
   it('ayuda, versión y errores de uso', async () => {

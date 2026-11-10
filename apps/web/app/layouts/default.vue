@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
+import type { DropdownMenuItem } from '@nuxt/ui'
 
-const { documents, createDocument, importMarkdownFiles } = useDocuments()
+const { createDocument, importMarkdownFiles } = useDocuments()
+const { canWrite } = useWorkspaces()
+const { user, isAdmin, logout } = useAuth()
+const colorMode = useColorMode()
+const tree = ref<{ newFolder: (parentId?: string | null) => void }>()
 
 const fileInput = ref<HTMLInputElement>()
 async function onFilesSelected(event: Event) {
@@ -10,8 +14,6 @@ async function onFilesSelected(event: Event) {
   input.value = ''
   if (files.length) await importMarkdownFiles(files)
 }
-const { user, isAdmin, logout } = useAuth()
-const colorMode = useColorMode()
 
 const userMenu = computed<DropdownMenuItem[][]>(() => [
   [{ type: 'label', label: user.value?.name, description: `@${user.value?.username}` }],
@@ -29,14 +31,6 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
   ],
   [{ label: 'Cerrar sesión', icon: 'i-lucide-log-out', onSelect: () => logout() }],
 ])
-
-const items = computed<NavigationMenuItem[]>(() =>
-  documents.value.map((doc) => ({
-    label: doc.title,
-    icon: 'i-lucide-file-text',
-    to: `/d/${doc.id}`,
-  })),
-)
 </script>
 
 <template>
@@ -50,6 +44,8 @@ const items = computed<NavigationMenuItem[]>(() =>
       </template>
 
       <template #default="{ collapsed }">
+        <WorkspaceSwitcher :collapsed="collapsed" />
+
         <div class="flex gap-1.5" :class="{ 'flex-col': collapsed }">
           <UButton
             icon="i-lucide-plus"
@@ -58,15 +54,28 @@ const items = computed<NavigationMenuItem[]>(() =>
             variant="outline"
             block
             :square="collapsed"
+            :disabled="!canWrite"
             class="flex-1"
             @click="createDocument()"
           />
+          <UTooltip text="Nueva carpeta">
+            <UButton
+              icon="i-lucide-folder-plus"
+              color="neutral"
+              variant="outline"
+              square
+              :disabled="!canWrite"
+              aria-label="Nueva carpeta"
+              @click="tree?.newFolder(null)"
+            />
+          </UTooltip>
           <UTooltip text="Importar Markdown (.md)">
             <UButton
               icon="i-lucide-file-up"
               color="neutral"
               variant="outline"
               square
+              :disabled="!canWrite"
               aria-label="Importar Markdown"
               @click="fileInput?.click()"
             />
@@ -81,17 +90,9 @@ const items = computed<NavigationMenuItem[]>(() =>
           />
         </div>
 
-        <UDashboardSearchButton :collapsed="collapsed" label="Buscar" class="mt-1 bg-transparent ring-default" />
+        <UDashboardSearchButton :collapsed="collapsed" label="Buscar" class="bg-transparent ring-default" />
 
-        <p v-if="!collapsed" class="px-2.5 pt-3 text-xs font-medium text-muted">Recientes</p>
-        <UNavigationMenu
-          v-if="items.length"
-          :collapsed="collapsed"
-          :items="items"
-          orientation="vertical"
-          tooltip
-        />
-        <p v-else-if="!collapsed" class="px-2.5 text-sm text-dimmed">Todavía no hay notas.</p>
+        <WorkspaceTree v-show="!collapsed" ref="tree" class="pt-2" />
       </template>
 
       <template #footer="{ collapsed }">

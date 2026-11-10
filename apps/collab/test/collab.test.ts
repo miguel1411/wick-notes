@@ -29,7 +29,10 @@ function socketWithCookie(cookieHeader: string | null) {
 
 beforeAll(async () => {
   const prisma = getPrisma()
+  await prisma.documentVersion.deleteMany()
   await prisma.document.deleteMany()
+  await prisma.folder.deleteMany()
+  await prisma.workspace.deleteMany({ where: { id: { not: 'general' } } })
   await prisma.session.deleteMany()
   await prisma.user.deleteMany()
   const created = await prisma.user.create({
@@ -171,6 +174,34 @@ describe('servidor de colaboración', () => {
   it('rechaza conexiones sin sesión o con una sesión inválida', async () => {
     await expect(connect(docId, null)).rejects.toThrow()
     await expect(connect(docId, `${SESSION_COOKIE}=${'x'.repeat(43)}`)).rejects.toThrow()
+  })
+
+  it('un lector recibe la nota pero sus cambios se descartan', async () => {
+    const prisma = getPrisma()
+    const ws = await prisma.workspace.create({
+      data: { name: 'Privado', members: { create: { userId: user.id, role: 'OWNER' } } },
+    })
+    const reader = toAuthUser(
+      await prisma.user.create({ data: { username: 'lectora', name: 'Lectora', passwordHash: await hashPassword('x'.repeat(12)) } }),
+    )
+    await prisma.workspaceMember.create({ data: { workspaceId: ws.id, userId: reader.id, role: 'VIEWER' } })
+    await prisma.document.update({ where: { id: docId }, data: { workspaceId: ws.id } })
+    const readerCookie = `${SESSION_COOKIE}=${(await createSession(reader)).token}`
+
+    const owner = await connect(docId)
+    owner.doc.getText('body').insert(0, 'original')
+    const viewer = await connect(docId, readerCookie)
+    await waitFor(() => text(viewer.doc) === 'original', 'el lector recibe el contenido')
+
+    viewer.doc.getText('body').insert(0, 'HACKEO ')
+    await new Promise((r) => setTimeout(r, 400))
+    expect(text(owner.doc)).toBe('original')
+
+    // Quien no es miembro ni siquiera puede conectarse.
+    const outsider = toAuthUser(
+      await prisma.user.create({ data: { username: 'ajena', name: 'Ajena', passwordHash: await hashPassword('x'.repeat(12)) } }),
+    )
+    await expect(connect(docId, `${SESSION_COOKIE}=${(await createSession(outsider)).token}`)).rejects.toThrow()
   })
 
   it('rechaza la sesión de una cuenta desactivada', async () => {

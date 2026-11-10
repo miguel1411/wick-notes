@@ -12,11 +12,24 @@ export const titleSchema = z
 
 export const createDocumentInput = z.object({
   title: titleSchema.optional(),
+  /** Espacio de trabajo; por defecto, el primero en el que se puede escribir. */
+  workspaceId: z.string().min(1).optional(),
+  folderId: z.string().min(1).nullable().optional(),
 })
 
 export const renameDocumentInput = z.object({
   title: titleSchema,
 })
+
+/** Cambios de metadatos de una nota: título y/o ubicación. */
+export const updateDocumentInput = z
+  .object({
+    title: titleSchema.optional(),
+    workspaceId: z.string().min(1).optional(),
+    folderId: z.string().min(1).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, 'No hay nada que cambiar')
+export type UpdateDocumentInput = z.input<typeof updateDocumentInput>
 
 export type CreateDocumentInput = z.input<typeof createDocumentInput>
 export type RenameDocumentInput = z.input<typeof renameDocumentInput>
@@ -39,6 +52,8 @@ export const importMarkdownInput = z.object({
   title: z.string().optional(),
   /** Nombre del fichero original; se usa como título si no hay otro. */
   filename: z.string().max(255).optional(),
+  workspaceId: z.string().min(1).optional(),
+  folderId: z.string().min(1).nullable().optional(),
 })
 
 export type WriteMarkdownInput = z.input<typeof writeMarkdownInput>

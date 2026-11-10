@@ -58,3 +58,15 @@ export function assertBodySize(event: H3Event) {
     throw createError({ statusCode: 413, message: 'El contenido supera el tamaño máximo (2 MB)' })
   }
 }
+
+/**
+ * Nota en la que el usuario puede escribir (si no, 404 o 403). Para las rutas que
+ * piden cambios al servidor de colaboración, que confía en que la web ya comprobó
+ * los permisos.
+ */
+export async function requireWritableDocument(event: H3Event, id: string) {
+  const { getDocument, ForbiddenError } = await import('@wick/core')
+  const doc = await runCore(() => getDocument(requireUser(event), id), event)
+  if (!doc.canEdit) await runCore(() => Promise.reject(new ForbiddenError('En este espacio solo tienes permiso de lectura')), event)
+  return doc
+}

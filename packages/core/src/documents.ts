@@ -1,33 +1,53 @@
 import { getPrisma, Prisma } from '@wick/db'
 import { requireActor, type AuthUser } from './auth/actor'
 import { NotFoundError } from './errors'
-import { contentIndex, normalizeForSearch } from './search'
 import {
   createDocumentInput,
   DEFAULT_TITLE,
   documentIdSchema,
   renameDocumentInput,
+  updateDocumentInput,
   type CreateDocumentInput,
   type RenameDocumentInput,
+  type UpdateDocumentInput,
 } from './schemas'
+import { contentIndex, normalizeForSearch } from './search'
 import { parse } from './validation'
+import {
+  assertFolderInWorkspace,
+  defaultWorkspaceId,
+  readableDocumentsWhere,
+  requireDocumentAccess,
+  requireWorkspaceAccess,
+  roleAllows,
+  type WorkspaceRole,
+} from './workspaces'
 
-// Permisos: por ahora cualquier usuario con sesión ve y edita todas las notas.
-// Cada operación recibe `actor` para que, cuando lleguen los espacios de trabajo,
-// las reglas se añadan aquí y valgan igual para web, CLI y MCP.
+// Permisos: cada nota hereda los de su espacio de trabajo (ver workspaces.ts).
+// Todas las operaciones reciben `actor`, así valen igual para web, CLI y MCP.
 
 /** Metadatos de un documento, sin el estado Yjs (que puede ser grande). */
 export interface DocumentSummary {
   id: string
   title: string
+  workspaceId: string
+  folderId: string | null
   createdAt: Date
   updatedAt: Date
   createdBy: { id: string; name: string } | null
 }
 
+/** Nota con el rol del usuario en su espacio (para saber si puede editarla). */
+export interface DocumentDetail extends DocumentSummary {
+  role: WorkspaceRole
+  canEdit: boolean
+}
+
 const summarySelect = {
   id: true,
   title: true,
+  workspaceId: true,
+  folderId: true,
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { id: true, name: true } },
@@ -40,14 +60,24 @@ function isNotFound(err: unknown): boolean {
 export interface ListDocumentsOptions {
   /** Filtra por título (contiene, sin distinguir mayúsculas). */
   query?: string
+  /** Solo las notas de este espacio. */
+  workspaceId?: string
   limit?: number
 }
 
+/** Notas que el usuario puede leer, de la más reciente a la más antigua. */
 export async function listDocuments(actor: AuthUser, options: ListDocumentsOptions = {}): Promise<DocumentSummary[]> {
   requireActor(actor)
+  if (options.workspaceId) await requireWorkspaceAccess(actor, options.workspaceId, 'read')
   const query = options.query?.trim()
   return getPrisma().document.findMany({
-    where: query ? { title: { contains: query, mode: 'insensitive' } } : undefined,
+    where: {
+      AND: [
+        await readableDocumentsWhere(actor),
+        options.workspaceId ? { workspaceId: options.workspaceId } : {},
+        query ? { title: { contains: query, mode: 'insensitive' } } : {},
+      ],
+    },
     select: summarySelect,
     orderBy: { updatedAt: 'desc' },
     take: options.limit && options.limit > 0 ? Math.min(options.limit, 1000) : undefined,
@@ -65,10 +95,16 @@ export async function createDocument(
 ): Promise<DocumentSummary> {
   requireActor(actor)
   const data = parse(createDocumentInput, input)
+  const workspaceId = data.workspaceId ?? (await defaultWorkspaceId(actor))
+  await requireWorkspaceAccess(actor, workspaceId, 'write')
+  await assertFolderInWorkspace(data.folderId, workspaceId)
+  const title = data.title ?? DEFAULT_TITLE
   return getPrisma().document.create({
     data: {
-      title: data.title ?? DEFAULT_TITLE,
-      titleSearch: normalizeForSearch(data.title ?? DEFAULT_TITLE),
+      title,
+      titleSearch: normalizeForSearch(title),
+      workspaceId,
+      folderId: data.folderId ?? null,
       createdById: actor.id,
       ...(initialState ? { yjsState: new Uint8Array(initialState), ...contentIndex(initialState) } : {}),
     },
@@ -76,35 +112,49 @@ export async function createDocument(
   })
 }
 
-export async function getDocument(actor: AuthUser, id: string): Promise<DocumentSummary> {
-  requireActor(actor)
-  const doc = await getPrisma().document.findUnique({
-    where: { id: parse(documentIdSchema, id) },
-    select: summarySelect,
-  })
+export async function getDocument(actor: AuthUser, id: string): Promise<DocumentDetail> {
+  const { role } = await requireDocumentAccess(actor, parse(documentIdSchema, id), 'read')
+  const doc = await getPrisma().document.findUnique({ where: { id }, select: summarySelect })
   if (!doc) throw new NotFoundError('Documento')
-  return doc
+  return { ...doc, role, canEdit: roleAllows(role, 'write') }
 }
 
-/** ¿Existe el documento y puede abrirlo este usuario? */
+/** ¿Existe la nota y puede leerla este usuario? */
 export async function canAccessDocument(actor: AuthUser, id: string): Promise<boolean> {
   requireActor(actor)
-  const parsed = documentIdSchema.safeParse(id)
-  if (!parsed.success) return false
-  return (await getPrisma().document.count({ where: { id: parsed.data } })) > 0
+  if (!documentIdSchema.safeParse(id).success) return false
+  try {
+    await requireDocumentAccess(actor, id, 'read')
+    return true
+  } catch {
+    return false
+  }
 }
 
-export async function renameDocument(
-  actor: AuthUser,
-  id: string,
-  input: RenameDocumentInput,
-): Promise<DocumentSummary> {
-  requireActor(actor)
-  const data = parse(renameDocumentInput, input)
+export async function renameDocument(actor: AuthUser, id: string, input: RenameDocumentInput): Promise<DocumentSummary> {
+  return updateDocument(actor, id, parse(renameDocumentInput, input))
+}
+
+/** Cambia el título y/o mueve la nota a otro espacio o carpeta. */
+export async function updateDocument(actor: AuthUser, id: string, input: UpdateDocumentInput): Promise<DocumentSummary> {
+  const data = parse(updateDocumentInput, input)
+  const current = await requireDocumentAccess(actor, parse(documentIdSchema, id), 'write')
+
+  const workspaceId = data.workspaceId ?? current.workspaceId
+  if (workspaceId !== current.workspaceId) await requireWorkspaceAccess(actor, workspaceId, 'write')
+  // Al cambiar de espacio sin indicar carpeta, la nota va a la raíz del nuevo espacio.
+  const folderId =
+    data.folderId !== undefined ? data.folderId : workspaceId !== current.workspaceId ? null : current.folderId
+  await assertFolderInWorkspace(folderId, workspaceId)
+
   try {
     return await getPrisma().document.update({
-      where: { id: parse(documentIdSchema, id) },
-      data: { title: data.title, titleSearch: normalizeForSearch(data.title) },
+      where: { id },
+      data: {
+        ...(data.title !== undefined ? { title: data.title, titleSearch: normalizeForSearch(data.title) } : {}),
+        workspaceId,
+        folderId,
+      },
       select: summarySelect,
     })
   } catch (err) {
@@ -114,9 +164,9 @@ export async function renameDocument(
 }
 
 export async function deleteDocument(actor: AuthUser, id: string): Promise<void> {
-  requireActor(actor)
+  await requireDocumentAccess(actor, parse(documentIdSchema, id), 'write')
   try {
-    await getPrisma().document.delete({ where: { id: parse(documentIdSchema, id) } })
+    await getPrisma().document.delete({ where: { id } })
   } catch (err) {
     if (isNotFound(err)) throw new NotFoundError('Documento')
     throw err

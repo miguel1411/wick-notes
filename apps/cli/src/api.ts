@@ -3,9 +3,19 @@ import { CliError } from './io'
 declare const __WICK_VERSION__: string
 export const VERSION = typeof __WICK_VERSION__ === 'string' ? __WICK_VERSION__ : '0.0.0-dev'
 
+export interface Workspace {
+  id: string
+  name: string
+  everyone: boolean
+  role: 'owner' | 'editor' | 'viewer'
+  documentCount: number
+}
+
 export interface NoteSummary {
   id: string
   title: string
+  workspaceId?: string
+  folderId?: string | null
   createdAt: string
   updatedAt: string
   createdBy: { id: string; name: string } | null
@@ -95,9 +105,16 @@ export class WickApi {
     return state.user
   }
 
-  list(query?: string): Promise<NoteSummary[]> {
-    const qs = query ? `?q=${encodeURIComponent(query)}` : ''
+  list(query?: string, workspaceId?: string): Promise<NoteSummary[]> {
+    const params = new URLSearchParams()
+    if (query) params.set('q', query)
+    if (workspaceId) params.set('workspace', workspaceId)
+    const qs = params.size ? `?${params}` : ''
     return this.json('GET', `/api/documents${qs}`)
+  }
+
+  workspaces(): Promise<Workspace[]> {
+    return this.json('GET', '/api/workspaces')
   }
 
   search(query: string, limit = 20): Promise<SearchResult[]> {
@@ -118,11 +135,11 @@ export class WickApi {
     return { text: await res.text(), filename }
   }
 
-  create(title: string): Promise<NoteSummary> {
-    return this.json('POST', '/api/documents', { title })
+  create(title: string, workspaceId?: string): Promise<NoteSummary> {
+    return this.json('POST', '/api/documents', { title, workspaceId })
   }
 
-  importMarkdown(input: { markdown: string; title?: string; filename?: string }): Promise<NoteSummary> {
+  importMarkdown(input: { markdown: string; title?: string; filename?: string; workspaceId?: string }): Promise<NoteSummary> {
     return this.json('POST', '/api/documents/import', input)
   }
 

@@ -4,7 +4,7 @@ const PUBLIC_API = new Set(['/api/health', '/api/auth/state', '/api/auth/login',
  * Lo único que se puede hacer con un token de API: trabajar con notas y saber
  * quién es. Gestionar usuarios, contraseñas o tokens exige una sesión de navegador.
  */
-const TOKEN_API = [/^\/api\/documents(\/|$)/, /^\/api\/auth\/state$/]
+const TOKEN_API = [/^\/api\/documents(\/|$)/, /^\/api\/workspaces(\/|$)/, /^\/api\/folders(\/|$)/, /^\/api\/auth\/state$/]
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export default defineEventHandler((event) => {

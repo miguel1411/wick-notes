@@ -23,6 +23,7 @@ Uso:
   wick mcp                                    Servidor MCP por stdio para agentes de IA
                                               (claude mcp add wick -- wick mcp)
 
+  wick workspaces                             Tus espacios de trabajo y tu rol en cada uno
   wick notes list [--limit N]                 Notas, de la más reciente a la más antigua
   wick notes search <texto>                   Busca en títulos y contenido (todas las palabras)
   wick notes get <nota> [--body]              Muestra una nota en Markdown
@@ -42,7 +43,8 @@ Ejemplo con tubería:  journalctl -n 50 | wick notes append "Incidencias" -f -
 Los subcomandos de notes también funcionan sin «notes»: wick list, wick get…
 
 Opciones generales:
-  --json            Salida en JSON (list, search, get, create, whoami)
+  -w, --workspace   Espacio de trabajo (nombre o id) para list, create e import
+  --json            Salida en JSON (list, search, get, create, whoami, workspaces)
   --server URL      Servidor (o WICK_SERVER)
   --token TOKEN     Token de API (o WICK_TOKEN)
   -h, --help        Esta ayuda
@@ -70,6 +72,7 @@ export async function run(argv: string[], io: IO): Promise<number> {
         all: { type: 'boolean' },
         yes: { type: 'boolean', short: 'y' },
         force: { type: 'boolean' },
+        workspace: { type: 'string', short: 'w' },
       },
     })
   } catch (err) {
@@ -150,8 +153,12 @@ export async function run(argv: string[], io: IO): Promise<number> {
       case 'export':
         await notes.exportNotes(ctx, rest.join(' ') || undefined, flags)
         break
+      case 'workspaces':
+      case 'ws':
+        await notes.workspaces(ctx, flags)
+        break
       case 'import':
-        await notes.importFiles(ctx, rest)
+        await notes.importFiles(ctx, rest, flags)
         break
       case 'history':
         await notes.history(ctx, rest, flags)

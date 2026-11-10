@@ -3,7 +3,9 @@ import {
   createDocument,
   listDocuments,
   listVersions,
+  listWorkspaces,
   renameDocument,
+  requireDocumentAccess,
   searchDocuments,
   WickError,
   type AuthUser,
@@ -37,8 +39,22 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
   )
 
   const noteUrl = (id: string) => `${origin}/d/${id}`
-  const line = (d: DocumentSummary) =>
-    `- ${d.title} (id: ${d.id}; actualizada ${d.updatedAt.toISOString()}${d.createdBy ? `; creada por ${d.createdBy.name}` : ''})`
+  let wsNames: Map<string, string> | undefined
+  const workspaceName = async (id: string) => {
+    wsNames ??= new Map((await listWorkspaces(user)).map((w) => [w.id, w.name]))
+    return wsNames.get(id) ?? id
+  }
+  const line = async (d: DocumentSummary) =>
+    `- ${d.title} (id: ${d.id}; espacio: ${await workspaceName(d.workspaceId)}; actualizada ${d.updatedAt.toISOString()}${d.createdBy ? `; creada por ${d.createdBy.name}` : ''})`
+  const lines = async (docs: DocumentSummary[]) => (await Promise.all(docs.map(line))).join('\n')
+
+  /** Espacio por id o nombre (sin distinguir mayúsculas). */
+  const resolveWorkspace = async (ref: string) => {
+    const all = await listWorkspaces(user)
+    const ws = all.find((w) => w.id === ref) ?? all.find((w) => w.name.toLowerCase() === ref.trim().toLowerCase())
+    if (!ws) throw new WickError(`No hay ningún espacio «${ref}». Espacios disponibles: ${all.map((w) => w.name).join(', ')}`, 'VALIDATION')
+    return ws
+  }
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
   /** Traduce errores de negocio a respuestas de herramienta legibles por el agente. */
@@ -62,13 +78,18 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     'notes_list',
     {
       title: 'Listar notas',
-      description: 'Lista las notas, de la más recientemente modificada a la más antigua.',
-      inputSchema: { limit: z.number().int().min(1).max(200).optional().describe('Máximo de notas (por defecto 50)') },
+      description:
+        'Lista las notas, de la más recientemente modificada a la más antigua. Las notas se organizan en espacios de trabajo; sin `workspace` lista las de todos los que puedes ver.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(200).optional().describe('Máximo de notas (por defecto 50)'),
+        workspace: z.string().optional().describe('Nombre o id de un espacio de trabajo'),
+      },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    safe(async ({ limit }) => {
-      const docs = await listDocuments(user, { limit: limit ?? 50 })
-      return text(docs.length ? docs.map(line).join('\n') : 'No hay notas todavía.')
+    safe(async ({ limit, workspace }) => {
+      const workspaceId = workspace ? (await resolveWorkspace(workspace)).id : undefined
+      const docs = await listDocuments(user, { limit: limit ?? 50, workspaceId })
+      return text(docs.length ? await lines(docs) : 'No hay notas.')
     }),
   )
 
@@ -87,7 +108,9 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     safe(async ({ query, limit }) => {
       const results = await searchDocuments(user, query, { limit: limit ?? 10 })
       if (!results.length) return text(`Ninguna nota contiene «${query}».`)
-      return text(results.map((r) => `${line(r)}${r.snippet ? `\n  > ${r.snippet}` : ''}`).join('\n'))
+      return text(
+        (await Promise.all(results.map(async (r) => `${await line(r)}${r.snippet ? `\n  > ${r.snippet}` : ''}`))).join('\n'),
+      )
     }),
   )
 
@@ -106,7 +129,7 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
         [
           `# ${doc.title}`,
           '',
-          `<!-- id: ${doc.id} · actualizada ${doc.updatedAt.toISOString()}${doc.createdBy ? ` · creada por ${doc.createdBy.name}` : ''} · ${noteUrl(doc.id)} -->`,
+          `<!-- id: ${doc.id} · espacio: ${await workspaceName(doc.workspaceId)} · actualizada ${doc.updatedAt.toISOString()}${doc.createdBy ? ` · creada por ${doc.createdBy.name}` : ''} · ${noteUrl(doc.id)} -->`,
           '',
           body.trim() || '_(nota vacía)_',
         ].join('\n'),
@@ -151,17 +174,20 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     'notes_create',
     {
       title: 'Crear nota',
-      description: 'Crea una nota nueva con un título y, opcionalmente, contenido Markdown.',
+      description:
+        'Crea una nota nueva con un título y, opcionalmente, contenido Markdown. Sin `workspace` va al primer espacio en el que puedes escribir.',
       inputSchema: {
         title: z.string().min(1).max(200).describe('Título de la nota'),
+        workspace: z.string().optional().describe('Nombre o id del espacio de trabajo'),
         markdown: z.string().optional().describe('Contenido en Markdown (sin repetir el título como # encabezado)'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    safe(async ({ title, markdown }) => {
+    safe(async ({ title, markdown, workspace }) => {
+      const workspaceId = workspace ? (await resolveWorkspace(workspace)).id : undefined
       const state = markdown?.trim() ? await markdownToYjsState(markdown) : undefined
-      const doc = await createDocument(user, { title }, state)
-      return text(`Nota creada: «${doc.title}» (id: ${doc.id}) · ${noteUrl(doc.id)}`)
+      const doc = await createDocument(user, { title, workspaceId }, state)
+      return text(`Nota creada: «${doc.title}» (id: ${doc.id}; espacio: ${await workspaceName(doc.workspaceId)}) · ${noteUrl(doc.id)}`)
     }),
   )
 
@@ -179,6 +205,7 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     },
     safe(async ({ note, markdown }) => {
       const doc = await resolveNote(user, note)
+      await requireDocumentAccess(user, doc.id, 'write')
       await writeDocumentMarkdown(doc.id, user.id, markdown, 'append')
       return text(`Añadido al final de «${doc.title}» (id: ${doc.id}).`)
     }),
@@ -199,6 +226,7 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     },
     safe(async ({ note, markdown, title }) => {
       const doc = await resolveNote(user, note)
+      await requireDocumentAccess(user, doc.id, 'write')
       await writeDocumentMarkdown(doc.id, user.id, markdown, 'replace')
       const final = title && title !== doc.title ? await renameDocument(user, doc.id, { title }) : doc
       return text(`Nota actualizada: «${final.title}» (id: ${doc.id}) · ${noteUrl(doc.id)}`)

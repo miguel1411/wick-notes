@@ -1,11 +1,12 @@
 import { Database } from '@hocuspocus/extension-database'
 import { Server } from '@hocuspocus/server'
 import {
-  canAccessDocument,
   loadYjsState,
   maybeCreateAutoVersion,
   NotFoundError,
   readSessionCookie,
+  requireDocumentAccess,
+  roleAllows,
   saveYjsState,
   UnauthorizedError,
   validateSession,
@@ -50,10 +51,13 @@ export function createCollabServer(options: CollabServerOptions) {
       if (await handleInternalRequest(request, response, instance)) throw null
     },
 
-    async onConnect({ documentName, requestHeaders, context }) {
+    async onConnect({ documentName, requestHeaders, context, connectionConfig }) {
       const session = await validateSession(readSessionCookie(requestHeaders.get('cookie')))
       if (!session) throw new UnauthorizedError()
-      if (!(await canAccessDocument(session.user, documentName))) throw new NotFoundError('Documento')
+      // Sin lectura: como si no existiera. Lectores: conexión de solo lectura
+      // (Hocuspocus descarta cualquier cambio que envíen).
+      const { role } = await requireDocumentAccess(session.user, documentName, 'read')
+      connectionConfig.readOnly = !roleAllows(role, 'write')
       context.user = session.user
     },
 

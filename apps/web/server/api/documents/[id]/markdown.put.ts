@@ -1,4 +1,4 @@
-import { getDocument, writeMarkdownInput, type WriteMarkdownInput } from '@wick/core'
+import { writeMarkdownInput, type WriteMarkdownInput } from '@wick/core'
 
 /**
  * Escribe Markdown en la nota: `replace` (por defecto) la deja con exactamente ese
@@ -8,7 +8,7 @@ import { getDocument, writeMarkdownInput, type WriteMarkdownInput } from '@wick/
 export default defineEventHandler(async (event) => {
   assertBodySize(event)
   const user = requireUser(event)
-  const doc = await runCore(() => getDocument(user, requireId(event)), event)
+  const doc = await requireWritableDocument(event, requireId(event))
   const input = await runCore(async () => parseInput(writeMarkdownInput, await readJson<WriteMarkdownInput>(event)), event)
   await writeDocumentMarkdown(doc.id, user.id, input.markdown, input.mode)
   setResponseStatus(event, 204)

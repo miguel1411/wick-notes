@@ -6,6 +6,15 @@ export async function resetDatabase() {
   const prisma = getPrisma()
   await prisma.documentVersion.deleteMany()
   await prisma.document.deleteMany()
+  await prisma.folder.deleteMany()
+  await prisma.workspaceMember.deleteMany()
+  await prisma.workspace.deleteMany({ where: { id: { not: 'general' } } })
+  // El espacio «General» (para todos) lo crea la migración; se deja como recién instalado.
+  await prisma.workspace.upsert({
+    where: { id: 'general' },
+    create: { id: 'general', name: 'General', everyone: true },
+    update: { name: 'General', everyone: true },
+  })
   await prisma.session.deleteMany()
   await prisma.apiToken.deleteMany()
   await prisma.user.deleteMany()

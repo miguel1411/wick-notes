@@ -26,8 +26,62 @@ model User {
 
   sessions  Session[]
   apiTokens ApiToken[]
-  documents Document[] @relation("DocumentCreatedBy")
-  versions  DocumentVersion[]
+  documents  Document[]        @relation("DocumentCreatedBy")
+  versions   DocumentVersion[]
+  workspaces WorkspaceMember[]
+  createdWorkspaces Workspace[] @relation("WorkspaceCreatedBy")
+}
+
+enum WorkspaceRole {
+  /// Gestiona el espacio (nombre, miembros) además de editar.
+  OWNER
+  /// Lee y escribe notas y carpetas.
+  EDITOR
+  /// Solo lee.
+  VIEWER
+}
+
+/// Espacio de trabajo: agrupa notas y carpetas y define quién puede verlas.
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  /// true: cualquier usuario activo es editor aunque no sea miembro (p. ej. «General»).
+  everyone    Boolean           @default(false)
+  createdById String?
+  createdBy   User?             @relation("WorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+  folders     Folder[]
+  documents   Document[]
+}
+
+model WorkspaceMember {
+  workspaceId String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+}
+
+/// Carpeta (anidable) dentro de un espacio de trabajo.
+model Folder {
+  id          String     @id @default(cuid())
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Folder?    @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[]   @relation("FolderTree")
+  name        String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[]
+
+  @@index([workspaceId, parentId])
 }
 
 model Session {
@@ -80,11 +134,17 @@ model Document {
   titleSearch   String @default("")
   createdById String?
   createdBy   User?    @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  /// Un espacio con notas no se puede borrar (Restrict): primero hay que moverlas o borrarlas.
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   versions    DocumentVersion[]
 
   @@index([updatedAt])
+  @@index([workspaceId, folderId])
 }
 
 enum VersionReason {

@@ -1,7 +1,7 @@
 import { getPrisma, Prisma } from '@wick/db'
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { parse } from '../validation'
-import { requireAdmin, toAuthUser, type AuthUser, type UserRole } from './actor'
+import { requireActor, requireAdmin, toAuthUser, type AuthUser, type UserRole } from './actor'
 import { hashPassword, verifyPassword } from './password'
 import {
   changeOwnPasswordInput,
@@ -134,4 +134,17 @@ export async function changeOwnPassword(
   }
   await prisma.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(newPassword) } })
   await revokeUserSessions(actor.id, currentSessionId)
+}
+
+/**
+ * Personas con cuenta activa (solo id, usuario y nombre), para elegir miembros de
+ * un espacio. Lo puede consultar cualquier usuario con sesión.
+ */
+export async function listUserDirectory(actor: AuthUser): Promise<{ id: string; username: string; name: string }[]> {
+  requireActor(actor)
+  return getPrisma().user.findMany({
+    where: { disabledAt: null },
+    select: { id: true, username: true, name: true },
+    orderBy: { name: 'asc' },
+  })
 }

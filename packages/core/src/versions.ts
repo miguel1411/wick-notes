@@ -1,7 +1,8 @@
 import { getPrisma } from '@wick/db'
-import { requireActor, type AuthUser } from './auth/actor'
+import type { AuthUser } from './auth/actor'
 import { NotFoundError } from './errors'
 import { extractPlainText } from './search'
+import { requireDocumentAccess } from './workspaces'
 
 /** Mientras se edita, como mucho una versión automática cada 10 minutos. */
 export const AUTO_VERSION_INTERVAL_MS = 10 * 60 * 1000
@@ -124,10 +125,8 @@ export async function protectBeforeChange(
 }
 
 export async function listVersions(actor: AuthUser, documentId: string): Promise<VersionSummary[]> {
-  requireActor(actor)
-  const prisma = getPrisma()
-  if ((await prisma.document.count({ where: { id: documentId } })) === 0) throw new NotFoundError('Documento')
-  const rows = await prisma.documentVersion.findMany({
+  await requireDocumentAccess(actor, documentId, 'read')
+  const rows = await getPrisma().documentVersion.findMany({
     where: { documentId },
     orderBy: { createdAt: 'desc' },
     select: summarySelect,
