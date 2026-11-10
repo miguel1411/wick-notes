@@ -164,6 +164,11 @@ export class WickApi {
     return { merged: data.merged === true }
   }
 
+  /** Cambios puntuales: cada `find` debe aparecer una sola vez (si no, ApiError 409 y no cambia nada). */
+  async editMarkdown(id: string, edits: { find: string; replace: string }[]): Promise<void> {
+    await this.send('PATCH', `/api/documents/${encodeURIComponent(id)}/markdown`, { edits })
+  }
+
   rename(id: string, title: string): Promise<NoteSummary> {
     return this.json('PATCH', `/api/documents/${encodeURIComponent(id)}`, { title })
   }

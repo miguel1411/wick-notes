@@ -105,6 +105,17 @@ function startServer() {
     if ((m = p.match(/^\/api\/documents\/([^/]+)\/markdown$/))) {
       const n = find(m[1]!)
       if (!n) return send(404, { message: 'Documento no encontrado' })
+      if (req.method === 'PATCH') {
+        let body = n.body
+        for (const e of json.edits) {
+          const at = body.indexOf(e.find)
+          if (at < 0) return send(409, { message: 'El fragmento no está en la nota (puede que alguien lo haya cambiado).' })
+          if (body.indexOf(e.find, at + 1) >= 0) return send(409, { message: 'El fragmento aparece varias veces en la nota.' })
+          body = body.slice(0, at) + e.replace + body.slice(at + e.find.length)
+        }
+        n.body = body
+        return send(200, { revision: 'r', merged: false })
+      }
       if (req.method === 'PUT') {
         lastPut = json
         let merged = false
@@ -383,6 +394,29 @@ describe('wick notes', () => {
     await wick(['edit', n.id, '--force'], { env: { ...loggedIn, WICK_EDITOR: `node "${editor}"` } })
     expect(lastPut?.baseRevision).toBeUndefined()
     expect(n.body).toBe('mi versión\n')
+  })
+
+  it('replace cambia un fragmento sin abrir el editor', async () => {
+    const n = addNote('Red de casa', 'Gateway: 192.168.1.1\nDNS: 1.1.1.1\nDNS secundario: 1.1.1.1')
+    const ok = await wick(['replace', 'red de casa', 'DNS: 1.1.1.1', 'DNS: 9.9.9.9'], { env: loggedIn })
+    expect(ok.code).toBe(0)
+    expect(ok.err).toContain('Cambiado en «Red de casa»')
+    expect(n.body).toBe('Gateway: 192.168.1.1\nDNS: 9.9.9.9\nDNS secundario: 1.1.1.1')
+
+    // Con "" se borra.
+    await wick(['replace', n.id, '\nDNS secundario: 1.1.1.1', ''], { env: loggedIn })
+    expect(n.body).toBe('Gateway: 192.168.1.1\nDNS: 9.9.9.9')
+
+    // Si no está (o se repite), no cambia nada y lo explica.
+    const missing = await wick(['replace', n.id, 'no existe', 'x'], { env: loggedIn })
+    expect(missing.code).toBe(1)
+    expect(missing.err).toContain('no está en la nota')
+    expect(n.body).toBe('Gateway: 192.168.1.1\nDNS: 9.9.9.9')
+
+    const usage = await wick(['replace', n.id, 'solo uno'], { env: loggedIn })
+    expect(usage.code).toBe(2)
+    expect(usage.err).toContain('Uso: wick notes replace')
+    expect((await wick(['replace', n.id, '', 'x'], { env: loggedIn })).code).toBe(2)
   })
 
   it('historial y restaurar', async () => {

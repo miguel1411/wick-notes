@@ -32,6 +32,7 @@ Uso:
   wick notes create "Título" [texto…]         Crea una nota (contenido opcional: texto, -f fichero, -f - stdin)
   wick notes edit <nota> [--force]            Edita una nota con tu editor ($VISUAL / $EDITOR)
   wick notes append <nota> [texto…]           Añade al final (texto, -f fichero, -f - stdin)
+  wick notes replace <nota> "actual" "nuevo"  Cambia un fragmento (debe aparecer una sola vez; "" lo borra)
   wick notes rename <nota> "Nuevo título"     Cambia el título
   wick notes export <nota> [-o destino|-]     Guarda la nota como .md (o la imprime con -o -)
   wick notes export --all [-o carpeta]        Exporta todas las notas
@@ -149,6 +150,9 @@ export async function run(argv: string[], io: IO): Promise<number> {
         break
       case 'append':
         await notes.append(ctx, rest, flags)
+        break
+      case 'replace':
+        await notes.replace(ctx, rest)
         break
       case 'rename':
         await notes.rename(ctx, rest)

@@ -233,6 +233,7 @@ wick notes get "red de casa"            # por id, principio del id o título
 wick notes create "Nueva nota" "texto"  # o -f nota.md, o -f - para leer de stdin
 wick notes edit backups                 # abre $VISUAL/$EDITOR; lo que otros escriban mientras tanto se conserva
 journalctl -n 50 | wick notes append "Incidencias" -f -
+wick notes replace red "DNS: 1.1.1.1" "DNS: 9.9.9.9"   # cambia un fragmento sin abrir el editor ("" lo borra)
 wick notes export --all -o ./copia      # un .md por nota, con `# Título`
 wick notes import *.md
 wick notes history backups              # versiones; con un id de versión, su contenido

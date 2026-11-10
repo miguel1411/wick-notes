@@ -188,6 +188,26 @@ export async function append(ctx: Context, args: string[], flags: { file?: strin
   ctx.io.stderr(`${colors(ctx.io).green('✔')} Añadido a «${note.title}»\n`)
 }
 
+// ---------------------------------------------------------------- replace
+
+/**
+ * Cambia un fragmento de la nota sin abrir el editor. El texto viejo debe
+ * aparecer exactamente una vez; si no, no se cambia nada. El resto de la nota
+ * (y lo que otros estén escribiendo) no se toca.
+ */
+export async function replace(ctx: Context, args: string[]) {
+  if (args.length !== 3) {
+    throw new UsageError('Uso: wick notes replace <id|título> "texto actual" "texto nuevo"  (usa "" como texto nuevo para borrarlo)')
+  }
+  const [ref, find, replacement] = args as [string, string, string]
+  if (!find) throw new UsageError('El texto a buscar no puede estar vacío')
+  if (find === replacement) throw new UsageError('El texto nuevo es igual al actual')
+  const api = ctx.api()
+  const note = await resolveNote(api, ref)
+  await api.editMarkdown(note.id, [{ find, replace: replacement }])
+  ctx.io.stderr(`${colors(ctx.io).green('✔')} Cambiado en «${note.title}»\n`)
+}
+
 // ---------------------------------------------------------------- edit
 
 function editorCommand(env: NodeJS.ProcessEnv): string {
