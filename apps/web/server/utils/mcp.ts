@@ -37,7 +37,9 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; t
         'Busca antes de crear: si ya existe una nota sobre el tema, léela y añade o actualiza en lugar de duplicar.',
         'Las notas se identifican por id o por título. El contenido es Markdown (CommonMark + GFM).',
         'Los cambios se ven al momento en el editor de cualquier persona que tenga la nota abierta.',
-        scope === 'read' ? 'Este acceso es de solo lectura.' : '',
+        scope === 'read'
+          ? 'Este acceso es de solo lectura.'
+          : 'Para cambiar una nota existente usa notes_edit (fragmentos concretos) o notes_append (añadir al final): no tocan lo que otras personas estén escribiendo. Usa notes_update solo para reescribirla entera, con la revisión que te dio notes_read.',
       ]
         .filter(Boolean)
         .join(' '),
@@ -124,18 +126,19 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; t
     'notes_read',
     {
       title: 'Leer nota',
-      description: 'Devuelve el contenido Markdown de una nota, con su título y metadatos.',
+      description:
+        'Devuelve el contenido Markdown de una nota, con su título y metadatos. Incluye su revisión, que necesita notes_update para no borrar lo que otras personas escriban mientras tanto.',
       inputSchema: { note: z.string().min(1).describe('Id o título de la nota') },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     safe(async ({ note }) => {
       const doc = await resolveNote(user, note)
-      const body = await getDocumentMarkdown(doc.id)
+      const { markdown: body, revision } = await getDocumentContent(doc.id)
       return text(
         [
           `# ${doc.title}`,
           '',
-          `<!-- id: ${doc.id} · espacio: ${await workspaceName(doc.workspaceId)} · actualizada ${doc.updatedAt.toISOString()}${doc.createdBy ? ` · creada por ${doc.createdBy.name}` : ''} · ${noteUrl(doc.id)} -->`,
+          `<!-- id: ${doc.id} · revisión: ${revision} · espacio: ${await workspaceName(doc.workspaceId)} · actualizada ${doc.updatedAt.toISOString()}${doc.createdBy ? ` · creada por ${doc.createdBy.name}` : ''} · ${noteUrl(doc.id)} -->`,
           '',
           body.trim() || '_(nota vacía)_',
         ].join('\n'),
@@ -305,24 +308,63 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; t
   )
 
   server.registerTool(
+    'notes_edit',
+    {
+      title: 'Cambiar partes de una nota',
+      description:
+        'Cambia fragmentos concretos de una nota sin tocar el resto: es la forma preferida de corregir o actualizar una nota. Cada `find` debe aparecer exactamente una vez en el contenido actual: cópialo tal cual de notes_read, con suficiente texto alrededor para que sea único. Se sustituye por `replace` (vacío para borrarlo). Los cambios se aplican en orden y es todo o nada: si un fragmento no está (quizá alguien lo cambió) o se repite, no se cambia nada y hay que volver a leer la nota.',
+      inputSchema: {
+        note: z.string().min(1).describe('Id o título de la nota'),
+        edits: z
+          .array(
+            z.object({
+              find: z.string().min(1).describe('Texto exacto que hay ahora en la nota (debe aparecer una sola vez)'),
+              replace: z.string().describe('Texto que lo sustituye (vacío para borrarlo)'),
+            }),
+          )
+          .min(1)
+          .max(100)
+          .describe('Cambios a aplicar, en orden'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    safe(async ({ note, edits }) => {
+      const doc = await resolveNote(user, note)
+      await requireDocumentAccess(user, doc.id, 'write')
+      const { revision } = await editDocumentMarkdown(doc.id, user.id, edits)
+      return text(`Nota actualizada: «${doc.title}» (id: ${doc.id}; ${edits.length === 1 ? '1 cambio' : `${edits.length} cambios`}; revisión: ${revision}) · ${noteUrl(doc.id)}`)
+    }),
+  )
+
+  server.registerTool(
     'notes_update',
     {
       title: 'Reescribir una nota',
       description:
-        'Sustituye el contenido de una nota por el Markdown indicado (y opcionalmente cambia el título). Lee la nota antes con notes_read: lo que no incluyas se elimina. Se aplica por diferencias, así que no afecta a las partes que no cambias.',
+        'Sustituye el contenido de una nota por el Markdown indicado (y opcionalmente cambia el título). Para cambios concretos usa mejor notes_edit. Lee la nota antes con notes_read y pasa su `revision`: tus cambios se calculan sobre lo que leíste, así que lo que otras personas escriban mientras tanto se conserva. Lo que quites de lo leído se elimina.',
       inputSchema: {
         note: z.string().min(1).describe('Id o título de la nota'),
         markdown: z.string().describe('Contenido completo nuevo en Markdown (sin el título)'),
+        revision: z.string().min(1).describe('Revisión que devolvió notes_read (o la última escritura) al leer la nota'),
         title: z.string().min(1).max(200).optional().describe('Nuevo título (opcional)'),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    safe(async ({ note, markdown, title }) => {
+    safe(async ({ note, markdown, revision, title }) => {
       const doc = await resolveNote(user, note)
       await requireDocumentAccess(user, doc.id, 'write')
-      await writeDocumentMarkdown(doc.id, user.id, markdown, 'replace')
+      const result = await writeDocumentMarkdown(doc.id, user.id, markdown, 'replace', revision)
       const final = title && title !== doc.title ? await renameDocument(user, doc.id, { title }) : doc
-      return text(`Nota actualizada: «${final.title}» (id: ${doc.id}) · ${noteUrl(doc.id)}`)
+      return text(
+        [
+          `Nota actualizada: «${final.title}» (id: ${doc.id}; revisión: ${result.revision}) · ${noteUrl(doc.id)}`,
+          result.merged
+            ? 'Otras personas la cambiaron desde tu lectura: sus cambios se han conservado junto a los tuyos. Usa notes_read si necesitas ver el resultado.'
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      )
     }),
   )
 

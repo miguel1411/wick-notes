@@ -10,6 +10,7 @@ import {
   hashPassword,
   loadYjsState,
   readMarkdown,
+  REVISION_HEADER,
   SERVICE_HEADER,
   SESSION_COOKIE,
   toAuthUser,
@@ -132,13 +133,13 @@ describe('API interna del servidor de colaboración', () => {
         body: JSON.stringify({ actorId: user.id, ...body }),
       })
 
-    expect((await post({ mode: 'append', markdown: 'Entrada del agente.' })).status).toBe(204)
+    expect((await post({ mode: 'append', markdown: 'Entrada del agente.' })).status).toBe(200)
     await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nEntrada del agente.', 'append en el navegador')
 
     // Guardado al momento (sin esperar al debounce).
     expect(readMarkdown(await loadYjsState(id))).toBe('# Diario\n\nEntrada del agente.')
 
-    expect((await post({ mode: 'replace', markdown: '# Diario\n\nReescrito.' })).status).toBe(204)
+    expect((await post({ mode: 'replace', markdown: '# Diario\n\nReescrito.' })).status).toBe(200)
     await waitFor(async () => (await markdownOf(client.ydoc)) === '# Diario\n\nReescrito.', 'replace en el navegador')
     client.close()
   })
@@ -191,5 +192,84 @@ describe('API interna del servidor de colaboración', () => {
     expect((await post({ mode: 'append', markdown: 'x', actorId: 'nadie' })).status).toBe(400)
     expect((await post({ mode: 'append', markdown: 'x', actorId: user.id }, 'no-existe')).status).toBe(404)
     expect((await post({ mode: 'append', markdown: 'x'.repeat(2 * 1024 * 1024 + 1), actorId: user.id })).status).toBe(413)
+    expect((await post({ mode: 'append', markdown: 'x', baseRevision: 'r', actorId: user.id })).status).toBe(400)
+    expect((await post({ mode: 'edit', actorId: user.id })).status).toBe(400)
+    expect((await post({ mode: 'edit', edits: [{ find: '', replace: 'x' }], actorId: user.id })).status).toBe(400)
+  })
+})
+
+describe('escrituras basadas en una lectura (agentes, CLI)', () => {
+  const read = async (id: string) => {
+    const res = await fetch(url(`/internal/documents/${id}/markdown`), { headers: auth() })
+    return { markdown: await res.text(), revision: res.headers.get(REVISION_HEADER)! }
+  }
+  const post = async (id: string, body: object) => {
+    const res = await fetch(url(`/internal/documents/${id}/markdown`), {
+      method: 'POST',
+      headers: { ...auth(), 'content-type': 'application/json' },
+      body: JSON.stringify({ actorId: user.id, ...body }),
+    })
+    return { status: res.status, body: (await res.json()) as { revision?: string; merged?: boolean; message?: string } }
+  }
+
+  it('la lectura trae una revisión, la misma mientras la nota no cambie', async () => {
+    const id = await newDoc('Igual')
+    const a = await read(id)
+    expect(a.revision).toMatch(/^[\w-]{10,}$/)
+    expect((await read(id)).revision).toBe(a.revision)
+  })
+
+  it('reemplazar con la revisión conserva lo que alguien escribió después de leer', async () => {
+    const id = await newDoc('# Servidor\n\nIP: 10.0.0.1\n\nNotas pendientes.\n')
+    const client = await openClient(id)
+    const { markdown, revision } = await read(id)
+
+    // Mientras el agente "piensa", la persona escribe en el navegador.
+    const t = client.ydoc.getText(CONTENT_KEY)
+    t.insert(t.toString().indexOf('Notas'), 'Puerto SSH: 2222\n\n')
+    await waitFor(async () => (await read(id)).markdown.includes('2222'), 'lo escrito llega al servidor')
+
+    const agent = markdown.replace('# Servidor', '# Servidor (producción)') + '\n## Copias\nDiarias.\n'
+    const res = await post(id, { mode: 'replace', markdown: agent, baseRevision: revision })
+    expect(res.status).toBe(200)
+    expect(res.body.merged).toBe(true)
+    const expected = '# Servidor (producción)\n\nIP: 10.0.0.1\n\nPuerto SSH: 2222\n\nNotas pendientes.\n\n## Copias\nDiarias.\n'
+    await waitFor(async () => (await markdownOf(client.ydoc)) === expected, 'el navegador ve la fusión')
+    expect((await read(id)).markdown).toBe(expected)
+
+    // La revisión devuelta sirve para el siguiente cambio sin volver a leer.
+    const again = await post(id, { mode: 'replace', markdown: expected.replace('Diarias', 'Semanales'), baseRevision: res.body.revision })
+    expect(again.body.merged).toBe(false)
+    await waitFor(async () => (await markdownOf(client.ydoc)).includes('Semanales'), 'segundo cambio')
+    client.close()
+  })
+
+  it('una revisión desconocida o de otra nota no borra nada: 409', async () => {
+    const id = await newDoc('Intacta')
+    const other = await newDoc('Otra')
+    const foreign = (await read(other)).revision
+    for (const baseRevision of ['no-existe', foreign]) {
+      const res = await post(id, { mode: 'replace', markdown: '', baseRevision })
+      expect(res.status).toBe(409)
+      expect(res.body.message).toContain('Vuelve a leer la nota')
+    }
+    expect((await read(id)).markdown).toBe('Intacta')
+  })
+
+  it('cambios puntuales en vivo, todo o nada', async () => {
+    const id = await newDoc('# Red\n\nGateway: 192.168.1.1\nDNS: 1.1.1.1\n')
+    const client = await openClient(id)
+    const ok = await post(id, { mode: 'edit', edits: [{ find: 'DNS: 1.1.1.1', replace: 'DNS: 9.9.9.9' }] })
+    expect(ok.status).toBe(200)
+    expect(ok.body.revision).toBeTruthy()
+    await waitFor(async () => (await markdownOf(client.ydoc)).includes('DNS: 9.9.9.9'), 'cambio puntual en el navegador')
+
+    const missing = await post(id, { mode: 'edit', edits: [{ find: 'Gateway', replace: 'GW' }, { find: 'no está', replace: 'x' }] })
+    expect(missing.status).toBe(409)
+    expect(missing.body.message).toContain('no está en la nota')
+    expect((await read(id)).markdown).toBe('# Red\n\nGateway: 192.168.1.1\nDNS: 9.9.9.9\n')
+    // Antes del primer cambio externo se guardó una versión.
+    expect((await listVersions(user, id)).map((v) => v.reason)).toEqual(['before_replace'])
+    client.close()
   })
 })

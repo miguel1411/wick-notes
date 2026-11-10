@@ -1,4 +1,4 @@
-import { getServiceSecret, SERVICE_HEADER } from '@wick/core'
+import { getServiceSecret, REVISION_HEADER, SERVICE_HEADER, type TextEdit } from '@wick/core'
 import { ofetch } from 'ofetch'
 
 /**
@@ -12,35 +12,77 @@ function baseUrl(): string {
   return `http://${process.env.DEV_HOST || '127.0.0.1'}:${process.env.COLLAB_PORT || '3121'}`
 }
 
-export async function collabFetch<T>(path: string, init: { method?: 'GET' | 'POST'; body?: unknown; responseType?: 'text' | 'arrayBuffer' } = {}): Promise<T> {
-  try {
-    // ofetch y no $fetch: $fetch tipa las rutas de esta app y esta llamada es a otro servicio.
-    return await ofetch<T>(path, {
-      baseURL: baseUrl(),
-      method: init.method ?? 'GET',
-      body: init.body as Record<string, unknown> | undefined,
-      headers: { [SERVICE_HEADER]: getServiceSecret() },
-      responseType: init.responseType as 'json' | undefined,
-      timeout: 60_000,
-    })
-  } catch (err) {
-    const e = err as { statusCode?: number; data?: { message?: string } }
-    const status = e.statusCode
-    if (status === 404 || status === 400 || status === 413) {
-      throw createError({ statusCode: status, message: e.data?.message ?? 'Petición no válida' })
-    }
-    console.error('[web] fallo al llamar al servidor de colaboración', err)
-    throw createError({ statusCode: 503, message: 'El servidor de colaboración no responde. Inténtalo de nuevo en unos segundos.' })
+type CollabInit = { method?: 'GET' | 'POST'; body?: unknown; responseType?: 'text' | 'arrayBuffer' }
+
+/** Opciones comunes: dirección, secreto de servicio y tiempo máximo. */
+function collabOptions(init: CollabInit) {
+  return {
+    baseURL: baseUrl(),
+    method: init.method ?? 'GET',
+    body: init.body as Record<string, unknown> | undefined,
+    headers: { [SERVICE_HEADER]: getServiceSecret() },
+    timeout: 60_000,
   }
 }
 
-export const getDocumentMarkdown = (id: string) =>
-  collabFetch<string>(`/internal/documents/${encodeURIComponent(id)}/markdown`, { responseType: 'text' })
+export async function collabFetch<T>(path: string, init: CollabInit = {}): Promise<T> {
+  try {
+    // ofetch y no $fetch: $fetch tipa las rutas de esta app y esta llamada es a otro servicio.
+    return await ofetch<T>(path, { ...collabOptions(init), responseType: init.responseType as 'json' | undefined })
+  } catch (err) {
+    throw collabError(err)
+  }
+}
 
-export const writeDocumentMarkdown = (id: string, actorId: string, markdown: string, mode: 'replace' | 'append') =>
-  collabFetch<void>(`/internal/documents/${encodeURIComponent(id)}/markdown`, {
+/** Errores del servidor de colaboración: los de la petición se reenvían tal cual; el resto, 503. */
+function collabError(err: unknown) {
+  const e = err as { statusCode?: number; data?: { message?: string } }
+  const status = e.statusCode
+  // 409: la revisión caducó o un fragmento a cambiar no está en la nota.
+  if (status === 404 || status === 400 || status === 409 || status === 413) {
+    return createError({ statusCode: status, message: e.data?.message ?? 'Petición no válida' })
+  }
+  console.error('[web] fallo al llamar al servidor de colaboración', err)
+  return createError({ statusCode: 503, message: 'El servidor de colaboración no responde. Inténtalo de nuevo en unos segundos.' })
+}
+
+/** Resultado de una escritura: la revisión nueva y si se unió con cambios de otras personas. */
+export interface WriteResult {
+  revision: string
+  merged: boolean
+}
+
+/**
+ * Markdown actual y su revisión. Quien vaya a reescribir la nota devuelve esa
+ * revisión al escribir, para no borrar lo que otros escriban mientras tanto.
+ */
+export async function getDocumentContent(id: string): Promise<{ markdown: string; revision: string }> {
+  try {
+    const res = await ofetch.raw(`/internal/documents/${encodeURIComponent(id)}/markdown`, { ...collabOptions({}), responseType: 'text' as const })
+    return { markdown: String(res._data ?? ''), revision: res.headers.get(REVISION_HEADER) ?? '' }
+  } catch (err) {
+    throw collabError(err)
+  }
+}
+
+export const getDocumentMarkdown = async (id: string) => (await getDocumentContent(id)).markdown
+
+/**
+ * `replace` deja la nota con exactamente ese contenido; con `baseRevision`, lo
+ * calcula sobre lo que se leyó en esa revisión y conserva lo escrito después por
+ * otras personas. `append` lo añade al final.
+ */
+export const writeDocumentMarkdown = (id: string, actorId: string, markdown: string, mode: 'replace' | 'append', baseRevision?: string) =>
+  collabFetch<WriteResult>(`/internal/documents/${encodeURIComponent(id)}/markdown`, {
     method: 'POST',
-    body: { markdown, mode, actorId },
+    body: { markdown, mode, actorId, baseRevision },
+  })
+
+/** Cambios puntuales: cada `find` debe aparecer una sola vez en la nota (si no, 409 y no cambia nada). */
+export const editDocumentMarkdown = (id: string, actorId: string, edits: TextEdit[]) =>
+  collabFetch<WriteResult>(`/internal/documents/${encodeURIComponent(id)}/markdown`, {
+    method: 'POST',
+    body: { mode: 'edit', edits, actorId },
   })
 
 export const markdownToYjsState = async (markdown: string) =>

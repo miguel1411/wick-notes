@@ -3,11 +3,15 @@ import * as Y from 'yjs'
 import {
   appendUpdate,
   CONTENT_KEY,
+  ContentEditError,
+  editUpdate,
   isLegacyState,
+  mergeUpdate,
   readMarkdown,
   replaceUpdate,
   restoreUpdate,
   stateFromMarkdown,
+  stateIncludes,
 } from '../src'
 
 const apply = (doc: Y.Doc, update: Uint8Array) => Y.applyUpdate(doc, update)
@@ -92,5 +96,120 @@ describe('contenido Markdown en Yjs', () => {
     expect(isLegacyState(stateFromMarkdown('nuevo'))).toBe(false)
     expect(isLegacyState(null)).toBe(false)
     expect(isLegacyState(Y.encodeStateAsUpdate(new Y.Doc()))).toBe(false)
+  })
+})
+
+describe('escrituras de agentes sin pisar a nadie', () => {
+  /** Nota viva, lo que leyó el agente y lo que una persona escribe después. */
+  function scenario() {
+    const live = docFrom(stateFromMarkdown('# Servidor\n\nIP: 10.0.0.1\n\nNotas pendientes.\n'))
+    const read = Y.encodeStateAsUpdate(live)
+    const t = live.getText(CONTENT_KEY)
+    t.insert(t.toString().indexOf('Notas'), 'Puerto SSH: 2222\n\n')
+    t.delete(t.toString().indexOf(' pendientes'), ' pendientes'.length)
+    return { live, read }
+  }
+  const agentText = '# Servidor (producción)\n\nIP: 10.0.0.1\n\nNotas pendientes.\n\n## Copias\nDiarias.\n'
+
+  it('reemplazar sin la lectura borra lo escrito después (el problema)', () => {
+    const { live } = scenario()
+    apply(live, replaceUpdate(Y.encodeStateAsUpdate(live), agentText))
+    expect(live.getText(CONTENT_KEY).toString()).toBe(agentText)
+  })
+
+  it('fusionar desde la lectura conserva lo de la persona y lo del agente', () => {
+    const { live, read } = scenario()
+    apply(live, mergeUpdate(read, agentText, Y.encodeStateAsUpdate(live)))
+    expect(live.getText(CONTENT_KEY).toString()).toBe(
+      '# Servidor (producción)\n\nIP: 10.0.0.1\n\nPuerto SSH: 2222\n\nNotas.\n\n## Copias\nDiarias.\n',
+    )
+  })
+
+  it('sin cambios ajenos, fusionar deja exactamente el texto del agente', () => {
+    const live = docFrom(stateFromMarkdown('uno\ndos'))
+    apply(live, mergeUpdate(Y.encodeStateAsUpdate(live), 'uno\ndos\ntres', Y.encodeStateAsUpdate(live)))
+    expect(live.getText(CONTENT_KEY).toString()).toBe('uno\ndos\ntres')
+  })
+
+  it('fusionar es igual de seguro si llega antes que lo escrito por la persona', () => {
+    const live = docFrom(stateFromMarkdown('a\n\nb'))
+    const read = Y.encodeStateAsUpdate(live)
+    const browser = docFrom(read)
+    browser.getText(CONTENT_KEY).insert(1, ' (persona)')
+    apply(live, mergeUpdate(read, 'a\n\nb (agente)', read))
+    apply(live, Y.encodeStateAsUpdate(browser))
+    expect(live.getText(CONTENT_KEY).toString()).toBe('a (persona)\n\nb (agente)')
+  })
+
+  it('si escriben a la vez en el mismo punto, lo de la persona queda delante', () => {
+    // Ids de navegador: bajo, medio y justo por debajo de la franja de los agentes.
+    for (const person of [7, 0x7fffffff, 0xffefffff]) {
+      const live = docFrom(stateFromMarkdown('Fin.'))
+      live.clientID = person
+      const read = Y.encodeStateAsUpdate(live)
+      live.getText(CONTENT_KEY).insert(4, ' Ana')
+      apply(live, mergeUpdate(read, 'Fin.\n\n## Agente', Y.encodeStateAsUpdate(live)))
+      // También al añadir al final con la persona escribiendo (aún sin llegar).
+      const browser = docFrom(Y.encodeStateAsUpdate(live))
+      browser.clientID = 7
+      browser.getText(CONTENT_KEY).insert(browser.getText(CONTENT_KEY).length, ' Sigo.')
+      apply(live, appendUpdate(Y.encodeStateAsUpdate(live), 'Anexo'))
+      apply(live, Y.encodeStateAsUpdate(browser))
+      expect(live.getText(CONTENT_KEY).toString()).toBe('Fin. Ana\n\n## Agente Sigo.\n\nAnexo')
+    }
+  })
+
+  it('los cambios externos nunca reutilizan un cliente de la nota', () => {
+    const live = docFrom(stateFromMarkdown('x'))
+    const clients = () => [...Y.decodeStateVector(Y.encodeStateVector(live)).keys()]
+    for (let i = 0; i < 5; i++) apply(live, appendUpdate(Y.encodeStateAsUpdate(live), `${i}`))
+    const ids = clients()
+    expect(new Set(ids).size).toBe(6)
+    expect(ids.filter((c) => c >= 0xfff00000)).toHaveLength(5)
+  })
+
+  it('reconoce si una lectura es anterior a la nota actual', () => {
+    const { live, read } = scenario()
+    expect(stateIncludes(Y.encodeStateAsUpdate(live), read)).toBe(true)
+    expect(stateIncludes(read, Y.encodeStateAsUpdate(live))).toBe(false)
+    expect(stateIncludes(Y.encodeStateAsUpdate(live), stateFromMarkdown('otra nota'))).toBe(false)
+    expect(stateIncludes(null, Y.encodeStateAsUpdate(new Y.Doc()))).toBe(true)
+  })
+
+  it('cambios puntuales: solo el fragmento, en orden', () => {
+    const live = docFrom(stateFromMarkdown('# Red\n\nGateway: 192.168.1.1\nDNS: 1.1.1.1\n'))
+    const t = live.getText(CONTENT_KEY)
+    apply(
+      live,
+      editUpdate(Y.encodeStateAsUpdate(live), [
+        { find: 'DNS: 1.1.1.1', replace: 'DNS: 9.9.9.9' },
+        { find: '# Red\n', replace: '# Red de casa\n' },
+      ]),
+    )
+    expect(t.toString()).toBe('# Red de casa\n\nGateway: 192.168.1.1\nDNS: 9.9.9.9\n')
+  })
+
+  it('cambios puntuales: conservan lo escrito a la vez en el mismo párrafo', () => {
+    const live = docFrom(stateFromMarkdown('Hay que revisar el disco y la RAM.'))
+    const read = Y.encodeStateAsUpdate(live)
+    live.getText(CONTENT_KEY).insert(live.getText(CONTENT_KEY).length, ' Urgente.')
+    apply(live, editUpdate(read, [{ find: 'el disco', replace: 'el disco SSD' }]))
+    expect(live.getText(CONTENT_KEY).toString()).toBe('Hay que revisar el disco SSD y la RAM. Urgente.')
+  })
+
+  it('cambios puntuales: todo o nada si un fragmento no está o se repite', () => {
+    const state = stateFromMarkdown('uno dos uno')
+    expect(() => editUpdate(state, [{ find: 'dos', replace: '2' }, { find: 'tres', replace: '3' }])).toThrow(ContentEditError)
+    expect(() => editUpdate(state, [{ find: 'tres', replace: '3' }])).toThrow(/no está en la nota/)
+    expect(() => editUpdate(state, [{ find: 'uno', replace: '1' }])).toThrow(/aparece varias veces/)
+    expect(() => editUpdate(state, [{ find: '', replace: 'x' }])).toThrow(ContentEditError)
+    // Un fragmento puede volverse único tras un cambio anterior.
+    const live = docFrom(state)
+    apply(live, editUpdate(state, [{ find: 'uno dos', replace: 'one dos' }, { find: 'uno', replace: '1' }]))
+    expect(live.getText(CONTENT_KEY).toString()).toBe('one dos 1')
+    // Saltos de línea de Windows en el fragmento.
+    const crlf = docFrom(stateFromMarkdown('a\nb'))
+    apply(crlf, editUpdate(Y.encodeStateAsUpdate(crlf), [{ find: 'a\r\nb', replace: 'a\r\nc' }]))
+    expect(crlf.getText(CONTENT_KEY).toString()).toBe('a\nc')
   })
 })

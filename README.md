@@ -231,7 +231,7 @@ wick notes list                         # recientes primero (-w espacio, --json 
 wick notes search postgres réplica      # en títulos y contenido, con fragmento
 wick notes get "red de casa"            # por id, principio del id o título
 wick notes create "Nueva nota" "texto"  # o -f nota.md, o -f - para leer de stdin
-wick notes edit backups                 # abre $VISUAL/$EDITOR; avisa si alguien la cambió mientras tanto
+wick notes edit backups                 # abre $VISUAL/$EDITOR; lo que otros escriban mientras tanto se conserva
 journalctl -n 50 | wick notes append "Incidencias" -f -
 wick notes export --all -o ./copia      # un .md por nota, con `# Título`
 wick notes import *.md
@@ -260,10 +260,11 @@ claude mcp add wick -- wick mcp
 |-----------------|--------------------------------------------------------|--------|
 | `notes_list`    | Lista notas recientes (opcional: de un espacio)        | lectura |
 | `notes_search`  | Busca en títulos y contenido, con fragmentos           | lectura |
-| `notes_read`    | Lee una nota (por id o título) en Markdown             | lectura |
+| `notes_read`    | Lee una nota (por id o título) en Markdown, con su revisión | lectura |
 | `notes_create`  | Crea una nota (opcional: en un espacio)                | escritura |
 | `notes_append`  | Añade al final de una nota                             | escritura |
-| `notes_update`  | Reescribe una nota (por diferencias) y/o la renombra   | escritura |
+| `notes_edit`    | Cambia fragmentos concretos (buscar → sustituir) sin tocar el resto | escritura |
+| `notes_update`  | Reescribe una nota entera (con la revisión leída) y/o la renombra | escritura |
 | `notes_history` | Versiones de una nota, o el contenido de una           | lectura |
 | `notes_tree`    | Árbol completo: espacios, carpetas anidadas y notas    | lectura |
 | `notes_move`    | **Propone** mover una nota a una carpeta o espacio (no la mueve) | escritura |
@@ -277,7 +278,15 @@ y en esa página apruebas o rechazas cada una (o todas). Aprobar solo es posible
 con sesión de navegador: un token, y por tanto un agente, no puede aprobar sus
 propias solicitudes. Al aprobar se vuelven a comprobar tus permisos.
 Lo que escribe un agente aparece al momento en el editor de quien tenga la nota
-abierta, sin pisar lo que esa persona esté escribiendo.
+abierta, **sin pisar lo que esa persona esté escribiendo**:
+
+- `notes_edit` y `notes_append` solo tocan su fragmento o el final. Si el
+  fragmento ya no está (alguien lo cambió), no se cambia nada y el agente vuelve
+  a leer la nota.
+- `notes_update` exige la revisión que dio `notes_read`. El cambio se calcula
+  sobre lo que el agente leyó y se une con lo que otras personas escribieron
+  mientras tanto (como dos personas escribiendo a la vez), en lugar de
+  borrarlo. Si escriben en el mismo punto, el texto de la persona queda delante.
 
 ### Editor
 
@@ -307,8 +316,12 @@ CLI y los agentes, carácter por carácter.
 - **Importar:** botón junto a *Nueva nota* (admite varios `.md`). Si el fichero
   empieza por `# Algo`, eso pasa a ser el título; si no, el nombre del fichero.
 - **Escribir por la API** (`PUT /api/documents/:id/markdown`): se aplica sobre el
-  documento vivo calculando diferencias, así que no pisa lo que otras personas
-  estén escribiendo en ese momento.
+  documento vivo calculando diferencias. Para reescribir una nota que leíste
+  antes, envía `baseRevision` con la cabecera `X-Wick-Revision` de esa lectura:
+  lo que otras personas escribieron desde entonces se conserva. Las revisiones
+  viven en memoria un día; si caducan (o se reinicia el servidor), la respuesta
+  es `409` y hay que volver a leer. Para cambios concretos, `PATCH` con
+  `{ edits: [{ find, replace }] }`.
 
 La web habla con el servidor de colaboración por una API interna protegida con
 un secreto derivado de `DATABASE_URL` (o `WICK_SERVICE_SECRET` si se define).
@@ -352,8 +365,9 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/move-requests`   | Movimientos propuestos por mis agentes (`?status=pending`). Solo con sesión |
 | `POST`   | `/api/move-requests/:id/approve` · `/reject` | Aprobar (mueve la nota) o rechazar. Solo con sesión |
 | `GET`    | `/api/documents/search` | Búsqueda en título y contenido (`?q=`, `?limit=`) con fragmentos |
-| `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |
-| `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append" }` |
+| `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`); cabecera `X-Wick-Revision` |
+| `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append", baseRevision? }` → `{ revision, merged }` |
+| `PATCH`  | `/api/documents/:id/markdown` | `{ edits: [{ find, replace }] }`: cada `find` debe aparecer una vez (si no, `409`) → `{ revision }` |
 | `GET`    | `/api/documents/:id/versions` | Historial de la nota |
 | `POST`   | `/api/documents/:id/versions` | Guarda una versión del contenido actual |
 | `GET`    | `/api/documents/:id/versions/:vid/markdown` | Contenido de una versión |

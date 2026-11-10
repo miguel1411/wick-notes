@@ -23,6 +23,11 @@ let server: Server
 let base: string
 /** Para simular que alguien cambia la nota mientras se edita. */
 let onNextMarkdownRead: ((n: Note) => void) | null = null
+/** Revisión → contenido leído (como el servidor de colaboración). */
+let revisions = new Map<string, string>()
+/** Simula que las revisiones caducaron (servidor reiniciado). */
+let revisionsExpired = false
+let lastPut: { markdown?: string; mode?: string; baseRevision?: string } | null = null
 
 const newId = () => `c${String(++seq).padStart(24, '0')}`
 const summary = (n: Note) => ({ id: n.id, title: n.title, createdAt: n.createdAt, updatedAt: n.updatedAt, createdBy: { id: 'u1', name: 'Ana' } })
@@ -101,19 +106,32 @@ function startServer() {
       const n = find(m[1]!)
       if (!n) return send(404, { message: 'Documento no encontrado' })
       if (req.method === 'PUT') {
-        n.body = json.mode === 'append' ? `${n.body.trimEnd()}\n\n${json.markdown}`.trimStart() : json.markdown
+        lastPut = json
+        let merged = false
+        if (json.baseRevision) {
+          const base = revisionsExpired ? undefined : revisions.get(json.baseRevision)
+          if (base === undefined) return send(409, { message: 'La revisión ya no está disponible' })
+          merged = base !== n.body
+        }
+        // Fusión de mentira: basta para ver que no se pierde lo ajeno.
+        n.body = json.mode === 'append' ? `${n.body.trimEnd()}\n\n${json.markdown}`.trimStart() : merged ? `${n.body} + ${json.markdown}` : json.markdown
         n.updatedAt = new Date().toISOString()
-        return send(204)
+        return send(200, { revision: `r${revisions.size + 1}`, merged })
       }
       if (onNextMarkdownRead) {
         const fn = onNextMarkdownRead
         onNextMarkdownRead = null
         fn(n)
       }
+      const revision = `r${revisions.size + 1}`
+      revisions.set(revision, n.body)
       if (url.searchParams.get('download')) {
-        return send(200, `# ${n.title}\n\n${n.body}`, { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(n.title)}.md` })
+        return send(200, `# ${n.title}\n\n${n.body}`, {
+          'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(n.title)}.md`,
+          'x-wick-revision': revision,
+        })
       }
-      return send(200, n.body)
+      return send(200, n.body, { 'x-wick-revision': revision })
     }
     if ((m = p.match(/^\/api\/documents\/([^/]+)$/))) {
       const n = find(m[1]!)
@@ -165,6 +183,9 @@ afterAll(() => new Promise<void>((r) => server.close(() => r())))
 
 beforeEach(async () => {
   notes = []
+  revisions = new Map()
+  revisionsExpired = false
+  lastPut = null
   seq = 0
   onNextMarkdownRead = null
   if (dir) await rm(dir, { recursive: true, force: true })
@@ -323,7 +344,21 @@ describe('wick notes', () => {
     expect(n.updatedAt).toBe(before)
   })
 
-  it('edit avisa si la nota cambió mientras se editaba y no pisa nada sin permiso', async () => {
+  it('edit une tus cambios con lo que otros escribieron mientras editabas', async () => {
+    const n = addNote('Compartida', 'original')
+    const editor = join(dir, 'editor.mjs')
+    await writeFile(editor, `import fs from 'node:fs'; fs.writeFileSync(process.argv[2], '# Compartida\\n\\nmi versión\\n')`)
+    // Justo después de abrir la nota, otra persona la cambia en la web.
+    onNextMarkdownRead = (note) => void setTimeout(() => (note.body = 'cambio de otra persona'))
+    const r = await wick(['edit', n.id], { env: { ...loggedIn, WICK_EDITOR: `node "${editor}"` } })
+    expect(r.code).toBe(0)
+    expect(lastPut?.baseRevision).toBe('r1')
+    expect(r.err).toContain('tus cambios se han unido a los de los demás')
+    expect(n.body).toBe('cambio de otra persona + mi versión\n')
+  })
+
+  it('edit sin revisión válida avisa si la nota cambió y no pisa nada sin permiso', async () => {
+    revisionsExpired = true
     const n = addNote('Compartida', 'original')
     const editor = join(dir, 'editor.mjs')
     await writeFile(editor, `import fs from 'node:fs'; fs.writeFileSync(process.argv[2], '# Compartida\\n\\nmi versión\\n')`)
@@ -342,9 +377,11 @@ describe('wick notes', () => {
     expect(r.err).toContain('Tu versión está en')
     expect(n.body).toBe('cambio de otra persona')
 
-    // Con --force sí se sobrescribe.
+    // Con --force sí se sobrescribe (sin fusionar).
     onNextMarkdownRead = null
+    revisionsExpired = false
     await wick(['edit', n.id, '--force'], { env: { ...loggedIn, WICK_EDITOR: `node "${editor}"` } })
+    expect(lastPut?.baseRevision).toBeUndefined()
     expect(n.body).toBe('mi versión\n')
   })
 

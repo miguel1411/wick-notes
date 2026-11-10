@@ -2,25 +2,35 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Hocuspocus } from '@hocuspocus/server'
 import {
   appendUpdate,
+  ContentEditError,
   createVersion,
+  editUpdate,
   getVersionState,
   isValidServiceSecret,
   loadYjsState,
   MAX_MARKDOWN_BYTES,
+  mergeUpdate,
   NotFoundError,
   protectBeforeChange,
   readMarkdown,
   renameDocument,
   replaceUpdate,
   restoreUpdate,
+  REVISION_HEADER,
   SERVICE_HEADER,
   stateFromMarkdown,
+  stateIncludes,
   toAuthUser,
   type AuthUser,
+  type TextEdit,
 } from '@wick/core'
 import { getPrisma } from '@wick/db'
 import * as Y from 'yjs'
+import { RevisionStore } from './revisions'
 import type { CollabContext } from './server'
+
+/** Lecturas recientes, para fusionar las escrituras basadas en ellas. */
+const revisions = new RevisionStore()
 
 /**
  * API interna del servidor de colaboración, solo para la web (cabecera con el
@@ -30,8 +40,11 @@ import type { CollabContext } from './server'
  *
  * La web ya ha comprobado los permisos del usuario antes de llamar.
  *
- *   GET  /internal/documents/:id/markdown   → Markdown actual (text/markdown)
- *   POST /internal/documents/:id/markdown   { markdown, mode: 'replace'|'append', actorId }
+ *   GET  /internal/documents/:id/markdown   → Markdown actual (text/markdown) y su
+ *                                             revisión (cabecera x-wick-revision)
+ *   POST /internal/documents/:id/markdown   { markdown, mode: 'replace'|'append', baseRevision?, actorId }
+ *                                           { edits: [{ find, replace }], mode: 'edit', actorId }
+ *                                           → { revision, merged }
  *   POST /internal/markdown/to-yjs          { markdown } → estado Yjs (octet-stream)
  *   POST /internal/documents/:id/versions   { actorId } → guarda una versión del estado actual
  *   GET  /internal/documents/:id/versions/:vid/markdown → Markdown de esa versión
@@ -52,21 +65,27 @@ export async function handleInternalRequest(
 
     const docMatch = url.pathname.match(/^\/internal\/documents\/([^/]+)\/markdown$/)
     if (docMatch && req.method === 'GET') {
-      const markdown = readMarkdown(await currentState(instance, docMatch[1]!))
-      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' })
-      res.end(markdown)
+      const id = docMatch[1]!
+      const state = await currentStateOrEmpty(instance, id)
+      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', [REVISION_HEADER]: revisions.remember(id, state) })
+      res.end(readMarkdown(state))
       return true
     }
 
     if (docMatch && req.method === 'POST') {
-      const body = (await readJson(req)) as { markdown?: unknown; mode?: unknown; actorId?: unknown }
+      const body = (await readJson(req)) as { markdown?: unknown; mode?: unknown; baseRevision?: unknown; edits?: unknown; actorId?: unknown }
+      const actorId = typeof body.actorId === 'string' ? body.actorId : null
+      if (body.mode === 'edit') {
+        return send(res, 200, await editMarkdown(instance, docMatch[1]!, requireEdits(body.edits), actorId))
+      }
       const markdown = requireMarkdown(body.markdown)
       const mode = body.mode === 'append' ? 'append' : body.mode === 'replace' ? 'replace' : null
-      if (!mode) return send(res, 400, { message: 'mode debe ser "replace" o "append"' })
-      await writeMarkdown(instance, docMatch[1]!, markdown, mode, typeof body.actorId === 'string' ? body.actorId : null)
-      res.writeHead(204)
-      res.end()
-      return true
+      if (!mode) return send(res, 400, { message: 'mode debe ser "replace", "append" o "edit"' })
+      if (body.baseRevision !== undefined && (typeof body.baseRevision !== 'string' || mode !== 'replace')) {
+        return send(res, 400, { message: 'baseRevision solo vale con mode "replace"' })
+      }
+      const baseRevision = typeof body.baseRevision === 'string' ? body.baseRevision : undefined
+      return send(res, 200, await writeMarkdown(instance, docMatch[1]!, markdown, mode, actorId, baseRevision))
     }
 
     const versionsMatch = url.pathname.match(/^\/internal\/documents\/([^/]+)\/versions$/)
@@ -106,6 +125,7 @@ export async function handleInternalRequest(
     return send(res, 404, { message: 'Ruta interna desconocida' })
   } catch (err) {
     if (err instanceof NotFoundError) return send(res, 404, { message: err.message })
+    if (err instanceof ContentEditError) return send(res, 409, { message: err.message })
     if (err instanceof BadRequest) return send(res, err.status, { message: err.message })
     console.error('[collab] error en la API interna', err)
     return send(res, 500, { message: 'Error interno' })
@@ -136,38 +156,71 @@ async function currentStateOrEmpty(instance: Hocuspocus<CollabContext>, id: stri
 /**
  * Aplica un cambio Yjs calculado sobre el documento vivo. La conexión directa
  * carga el documento (o usa el abierto), difunde el cambio a quien lo tenga
- * abierto y lo guarda al desconectar.
+ * abierto y lo guarda al desconectar. Devuelve la revisión del resultado, para
+ * poder escribir otra vez sin volver a leer.
  */
 async function applyToLiveDocument(
   instance: Hocuspocus<CollabContext>,
   id: string,
   actor: AuthUser,
   compute: (state: Uint8Array) => Promise<Uint8Array>,
-) {
+): Promise<string> {
   const connection = await instance.openDirectConnection(id, { user: actor })
   try {
     const update = await compute(Y.encodeStateAsUpdate(connection.document!))
     await connection.transact((doc) => Y.applyUpdate(doc, update))
+    return revisions.remember(id, Y.encodeStateAsUpdate(connection.document!))
   } finally {
     await connection.disconnect()
   }
 }
 
+/**
+ * Con `baseRevision`, el reemplazo se calcula sobre lo que se leyó y se une con
+ * lo escrito después por otras personas. `merged` indica que la nota había
+ * cambiado desde esa lectura (el resultado puede no ser exactamente `markdown`).
+ */
 async function writeMarkdown(
   instance: Hocuspocus<CollabContext>,
   id: string,
   markdown: string,
   mode: 'replace' | 'append',
   actorId: string | null,
-) {
+  baseRevision?: string,
+): Promise<{ revision: string; merged: boolean }> {
   await requireDocument(id)
   const actor = await requireActor(actorId)
-  await applyToLiveDocument(instance, id, actor, async (state) => {
+  let merged = false
+  const revision = await applyToLiveDocument(instance, id, actor, async (state) => {
     if (mode === 'append') return appendUpdate(state, markdown)
+    const base = baseRevision ? revisions.get(id, baseRevision) : null
+    if (baseRevision && (!base || !stateIncludes(state, base))) {
+      throw new BadRequest('La revisión ya no está disponible (caducó o se reinició el servidor). Vuelve a leer la nota y repite el cambio.', 409)
+    }
     // Reemplazar puede borrar contenido: antes se guarda una versión.
     await protectBeforeChange(id, state, 'before_replace', actor.id)
-    return replaceUpdate(state, markdown)
+    if (!base) return replaceUpdate(state, markdown)
+    merged = readMarkdown(state) !== readMarkdown(base)
+    return mergeUpdate(base, markdown, state)
   })
+  return { revision, merged }
+}
+
+/** Cambios puntuales: cada fragmento debe aparecer una sola vez; si no, no se cambia nada. */
+async function editMarkdown(
+  instance: Hocuspocus<CollabContext>,
+  id: string,
+  edits: TextEdit[],
+  actorId: string | null,
+): Promise<{ revision: string; merged: boolean }> {
+  await requireDocument(id)
+  const actor = await requireActor(actorId)
+  const revision = await applyToLiveDocument(instance, id, actor, async (state) => {
+    const update = editUpdate(state, edits) // valida antes de guardar ninguna versión
+    await protectBeforeChange(id, state, 'before_replace', actor.id)
+    return update
+  })
+  return { revision, merged: false }
 }
 
 /** Restaura contenido y título de una versión; antes guarda la versión actual. */
@@ -189,6 +242,20 @@ class BadRequest extends Error {
   ) {
     super(message)
   }
+}
+
+function requireEdits(value: unknown): TextEdit[] {
+  if (!Array.isArray(value) || value.length === 0) throw new BadRequest('Falta la lista de cambios (edits)')
+  if (value.length > 100) throw new BadRequest('Como mucho 100 cambios a la vez')
+  let bytes = 0
+  return value.map((e: { find?: unknown; replace?: unknown }) => {
+    if (typeof e?.find !== 'string' || !e.find || typeof e.replace !== 'string') {
+      throw new BadRequest('Cada cambio necesita find (no vacío) y replace')
+    }
+    bytes += Buffer.byteLength(e.find) + Buffer.byteLength(e.replace)
+    if (bytes > MAX_MARKDOWN_BYTES) throw new BadRequest('Los cambios superan el tamaño máximo (2 MB)', 413)
+    return { find: e.find, replace: e.replace }
+  })
 }
 
 function requireMarkdown(value: unknown): string {

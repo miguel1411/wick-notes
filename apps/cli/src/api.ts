@@ -131,14 +131,17 @@ export class WickApi {
     return this.json('GET', `/api/documents/${encodeURIComponent(id)}`)
   }
 
-  /** Contenido en Markdown. Con `withTitle`, el fichero completo (`# Título` + contenido) y su nombre. */
-  async markdown(id: string, withTitle = false): Promise<{ text: string; filename: string | null }> {
+  /**
+   * Contenido en Markdown. Con `withTitle`, el fichero completo (`# Título` +
+   * contenido) y su nombre. `revision` identifica lo leído (ver `writeMarkdown`).
+   */
+  async markdown(id: string, withTitle = false): Promise<{ text: string; filename: string | null; revision: string | null }> {
     const res = await this.send('GET', `/api/documents/${encodeURIComponent(id)}/markdown${withTitle ? '?download=1' : ''}`)
     const disposition = res.headers.get('content-disposition') ?? ''
     const star = disposition.match(/filename\*=UTF-8''([^;]+)/i)
     const plain = disposition.match(/filename="([^"]+)"/i)
     const filename = star ? decodeURIComponent(star[1]!) : plain ? plain[1]! : null
-    return { text: await res.text(), filename }
+    return { text: await res.text(), filename, revision: res.headers.get('x-wick-revision') }
   }
 
   create(title: string, workspaceId?: string): Promise<NoteSummary> {
@@ -149,8 +152,16 @@ export class WickApi {
     return this.json('POST', '/api/documents/import', input)
   }
 
-  async writeMarkdown(id: string, markdown: string, mode: 'replace' | 'append'): Promise<void> {
-    await this.send('PUT', `/api/documents/${encodeURIComponent(id)}/markdown`, { markdown, mode })
+  /**
+   * Con `baseRevision` (la de una lectura), el reemplazo se calcula sobre lo que
+   * se leyó y conserva lo que otras personas escribieron después; `merged` indica
+   * que había cambios ajenos. Si la revisión caducó, ApiError 409.
+   */
+  async writeMarkdown(id: string, markdown: string, mode: 'replace' | 'append', baseRevision?: string): Promise<{ merged: boolean }> {
+    const res = await this.send('PUT', `/api/documents/${encodeURIComponent(id)}/markdown`, { markdown, mode, baseRevision })
+    // Servidores anteriores responden 204 sin cuerpo.
+    const data = res.status === 200 ? ((await res.json().catch(() => ({}))) as { merged?: boolean }) : {}
+    return { merged: data.merged === true }
   }
 
   rename(id: string, title: string): Promise<NoteSummary> {

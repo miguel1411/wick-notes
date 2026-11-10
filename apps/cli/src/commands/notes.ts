@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import type { NoteSummary } from '../api'
+import { ApiError, type NoteSummary } from '../api'
 import { colors, pad, relativeTime, truncate } from '../format'
 import { CliError, UsageError } from '../io'
 import type { Context } from '../main'
@@ -196,8 +196,9 @@ function editorCommand(env: NodeJS.ProcessEnv): string {
 
 /**
  * Abre la nota en tu editor. Al guardar y cerrar, se aplican los cambios
- * (título y contenido). Si la nota cambió en el servidor mientras editabas, avisa
- * antes de sobrescribir y conserva tu versión para que no se pierda.
+ * (título y contenido). Lo que otras personas escriban mientras tanto se
+ * conserva: tus cambios se calculan sobre la versión que abriste y se unen a los
+ * suyos. Con --force la nota queda exactamente como tu fichero.
  */
 export async function edit(ctx: Context, ref: string | undefined, flags: { force?: boolean }) {
   if (!ref) throw new UsageError('Uso: wick notes edit <id|título>')
@@ -224,25 +225,48 @@ export async function edit(ctx: Context, ref: string | undefined, flags: { force
       return
     }
 
-    // ¿Cambió la nota en el servidor mientras se editaba?
-    const current = await api.markdown(note.id, true)
-    if (normalize(current.text) !== normalize(base.text) && !flags.force) {
-      io.stderr(`${c.yellow('!')} «${note.title}» cambió en el servidor mientras la editabas.\n`)
-      const answer = io.stdinIsTTY ? (await io.prompt('¿Sobrescribir esos cambios con tu versión? [s/N] ')).trim().toLowerCase() : ''
-      if (answer !== 's' && answer !== 'si' && answer !== 'sí') {
-        keepFile = true
-        throw new CliError(`No se guardó nada. Tu versión está en ${file}\n(revísala y repite con --force, o usa \`wick notes edit\` de nuevo)`)
+    const { title, body } = splitTitle(edited)
+    if (normalize(body) !== normalize(splitTitle(base.text).body)) {
+      let merged: boolean | null = null
+      if (base.revision && !flags.force) {
+        try {
+          merged = (await api.writeMarkdown(note.id, body, 'replace', base.revision)).merged
+        } catch (err) {
+          // Revisión caducada (o servidor reiniciado): se comprueba a mano.
+          if (!(err instanceof ApiError && err.status === 409)) throw err
+        }
+      }
+      if (merged === null) {
+        keepFile = true // si al final no se guarda, tu versión se queda en el fichero
+        await overwrite(ctx, note, base.text, body, flags.force === true, file)
+        keepFile = false
+      } else if (merged) {
+        io.stderr(`${c.yellow('!')} «${note.title}» cambió en el servidor mientras la editabas: tus cambios se han unido a los de los demás.\n`)
       }
     }
-
-    const { title, body } = splitTitle(edited)
-    const bodyBefore = splitTitle(current.text).body
     if (title && title !== note.title) await api.rename(note.id, title)
-    if (normalize(body) !== normalize(bodyBefore)) await api.writeMarkdown(note.id, body, 'replace')
     io.stderr(`${c.green('✔')} Guardada «${title ?? note.title}»\n`)
   } finally {
     if (!keepFile) await rm(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * Sin revisión con la que unir los cambios: si la nota cambió en el servidor,
+ * pregunta antes de sobrescribirla (si la respuesta es no, error sin guardar nada).
+ */
+async function overwrite(ctx: Context, note: NoteSummary, baseText: string, body: string, force: boolean, file: string) {
+  const { io } = ctx
+  const api = ctx.api()
+  const current = await api.markdown(note.id, true)
+  if (normalize(current.text) !== normalize(baseText) && !force) {
+    io.stderr(`${colors(io).yellow('!')} «${note.title}» cambió en el servidor mientras la editabas.\n`)
+    const answer = io.stdinIsTTY ? (await io.prompt('¿Sobrescribir esos cambios con tu versión? [s/N] ')).trim().toLowerCase() : ''
+    if (answer !== 's' && answer !== 'si' && answer !== 'sí') {
+      throw new CliError(`No se guardó nada. Tu versión está en ${file}\n(revísala y repite con --force, o usa \`wick notes edit\` de nuevo)`)
+    }
+  }
+  await api.writeMarkdown(note.id, body, 'replace')
 }
 
 // ---------------------------------------------------------------- rename / delete
