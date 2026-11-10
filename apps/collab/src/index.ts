@@ -1,6 +1,6 @@
 import { reindexMissingDocuments } from '@wick/core'
 import { disconnectPrisma } from '@wick/db'
-import { migrateLegacyContent } from './migrate-content'
+import { warnLegacyContent } from './legacy-content'
 import { createCollabServer } from './server'
 
 const port = Number(process.env.COLLAB_INTERNAL_PORT ?? process.env.COLLAB_PORT ?? 3121)
@@ -26,8 +26,8 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const) {
   process.once(signal, () => void shutdown(signal))
 }
 
-// Notas del editor anterior: se pasan a Markdown antes de aceptar conexiones.
-await migrateLegacyContent()
+// Notas del editor anterior (solo si se restauró una copia antigua): se avisa.
+await warnLegacyContent().catch((err) => console.error('[collab] error al revisar el formato de las notas', err))
 
 await server.listen()
 console.log(`[collab] escuchando en ws://${address}:${port}`)

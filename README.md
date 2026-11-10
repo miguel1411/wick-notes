@@ -51,11 +51,13 @@ docker compose up -d --build
 Las migraciones se aplican solas y nunca borran datos. `docker compose down`
 conserva los datos; **`docker compose down -v` los elimina**.
 
-Al actualizar desde una versión con el editor anterior (Milkdown), el servidor
-de colaboración pasa al arrancar las notas y sus versiones al formato actual
-(texto Markdown), una sola vez. Conviene hacer antes un respaldo
-(`scripts/backup.sh`). Las pestañas que sigan abiertas con la web antigua no
-pueden conectarse: basta con recargarlas.
+Si vienes de una versión con el editor anterior (Milkdown), o restauras un
+respaldo de entonces, las notas deben convertirse una vez al formato actual
+(texto Markdown). El servidor de colaboración avisa al arrancar si encuentra
+alguna. Para convertirlas, haz un respaldo (`scripts/backup.sh`), arranca una
+vez la versión `c1cbd76` (`git checkout c1cbd76 && docker compose up -d --build`)
+hasta ver «migración al editor Markdown: … convertidas» en
+`docker compose logs collab`, y vuelve a la actual (`git checkout main`).
 
 ### Respaldos
 
@@ -167,7 +169,6 @@ apps/
 packages/
   core/      Reglas de negocio. Web, colaboración (y en el futuro CLI y MCP) pasan por aquí
   db/        Esquema Prisma, migraciones y cliente de PostgreSQL
-  markdown/  Conversor del formato anterior (Milkdown) a Markdown; solo para migrar notas antiguas
 ```
 
 ### Búsqueda

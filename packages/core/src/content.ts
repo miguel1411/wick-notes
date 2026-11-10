@@ -29,7 +29,7 @@ export const CONTENT_FORMAT = 'markdown-v1'
 /** Cabecera HTTP con la revisión de la nota que se acaba de leer o escribir. */
 export const REVISION_HEADER = 'x-wick-revision'
 
-/** Fragmento del formato anterior (Milkdown/ProseMirror), solo para migrar. */
+/** Fragmento del formato anterior (Milkdown/ProseMirror), solo para detectarlo. */
 const LEGACY_FRAGMENT = 'prosemirror'
 
 /** Saltos de línea de Windows y BOM fuera: el texto se guarda siempre igual. */

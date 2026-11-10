@@ -14,8 +14,7 @@
     "@wick/core": "workspace:*",
     "@wick/db": "workspace:*",
     "tsx": "4.23.15",
-    "yjs": "13.6.33",
-    "@wick/markdown": "workspace:*"
+    "yjs": "13.6.33"
   },
   "devDependencies": {
     "@hocuspocus/provider": "4.8.0",
