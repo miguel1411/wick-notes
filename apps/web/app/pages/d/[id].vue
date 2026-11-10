@@ -7,6 +7,7 @@ const id = computed(() => String(route.params.id))
 const { renameDocument, deleteDocument, moveDocument, refresh: refreshList } = useDocuments()
 const { workspaces, current, select: selectWorkspace } = useWorkspaces()
 const confirm = useConfirmDialog()
+const toast = useToast()
 const { toggleMarkdownGuide } = useHelp()
 const { data: doc, error, refresh: refreshDoc } = await useFetch<DocumentDetail>(() => `/api/documents/${id.value}`)
 
@@ -45,6 +46,20 @@ async function saveTitle() {
 // --- Colaboración ---
 const syncStatus = ref<SyncStatus>('connecting')
 const peers = ref<Peer[]>([])
+
+// --- Copiar Markdown ---
+// Lo mismo que «Descargar Markdown»: el título como `# Título` y el contenido.
+const copied = ref(false)
+async function copyMarkdown() {
+  const text = $fetch<string>(`/api/documents/${id.value}/markdown?download=1`, { responseType: 'text' })
+  if (await copyText(text)) {
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+    toast.add({ title: 'Markdown copiado', icon: 'i-lucide-clipboard-check', color: 'success' })
+  } else {
+    toast.add({ title: 'No se pudo copiar', description: 'Prueba con «Descargar Markdown».', color: 'warning' })
+  }
+}
 
 // --- Mover ---
 const moveOpen = ref(false)
@@ -115,7 +130,17 @@ const menu = computed<DropdownMenuItem[][]>(() => [
       />
 
       <div v-else class="mx-auto w-full max-w-3xl">
-        <p v-if="workspaceName" class="pt-2 text-xs text-dimmed">{{ workspaceName }}</p>
+        <div class="flex items-center justify-between gap-2 pt-2">
+          <p class="truncate text-xs text-dimmed">{{ workspaceName }}</p>
+          <UButton
+            :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+            label="Copiar Markdown"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            @click="copyMarkdown"
+          />
+        </div>
         <input
           v-model="title"
           aria-label="Título de la nota"

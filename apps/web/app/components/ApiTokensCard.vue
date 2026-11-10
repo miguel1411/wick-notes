@@ -80,10 +80,9 @@ async function submitCreate(event: FormSubmitEvent<{ name: string }>) {
 
 async function copyToken() {
   if (!newToken.value) return
-  try {
-    await navigator.clipboard.writeText(newToken.value)
+  if (await copyText(newToken.value)) {
     toast.add({ title: 'Token copiado', color: 'success', icon: 'i-lucide-clipboard-check' })
-  } catch {
+  } else {
     toast.add({ title: 'No se pudo copiar', description: 'Selecciona el token y cópialo a mano.', color: 'warning' })
   }
 }

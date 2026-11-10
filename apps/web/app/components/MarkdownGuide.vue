@@ -82,10 +82,9 @@ const filtered = computed(() => {
 })
 
 async function copy(entry: Entry) {
-  try {
-    await navigator.clipboard.writeText(entry.syntax)
+  if (await copyText(entry.syntax)) {
     toast.add({ title: `${entry.title}: copiado`, icon: 'i-lucide-clipboard-check', color: 'success' })
-  } catch {
+  } else {
     toast.add({ title: 'No se pudo copiar', description: 'Selecciona el ejemplo y cópialo a mano.', color: 'warning' })
   }
 }
