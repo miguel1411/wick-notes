@@ -5,6 +5,7 @@ const { createDocument, importMarkdownFiles } = useDocuments()
 const { canWrite } = useWorkspaces()
 const { user, isAdmin, logout } = useAuth()
 const colorMode = useColorMode()
+const sourceUrl = useSourceUrl()
 const tree = ref<{ newFolder: (parentId?: string | null) => void }>()
 
 const fileInput = ref<HTMLInputElement>()
@@ -40,6 +41,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
       })),
     },
   ],
+  [{ label: 'Código fuente', icon: 'i-lucide-code-xml', to: sourceUrl, target: '_blank' }],
   [{ label: 'Cerrar sesión', icon: 'i-lucide-log-out', onSelect: () => logout() }],
 ])
 </script>

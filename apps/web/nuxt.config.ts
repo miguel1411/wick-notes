@@ -19,6 +19,9 @@ export default defineNuxtConfig({
       // URL del WebSocket de colaboración. Vacía = mismo host que la web en collabPort.
       collabUrl: '',
       collabPort: 3121,
+      // Código fuente de esta instalación (enlace «Código fuente»). Vacía = el
+      // repositorio oficial. Si modificas wick notes, pon aquí tu copia (AGPL-3.0).
+      sourceUrl: '',
     },
   },
 
