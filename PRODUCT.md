@@ -350,7 +350,7 @@ No debemos introducir infraestructura distribuida, dependencias externas obligat
 
 - Editor Markdown con vista previa en vivo: los símbolos se ocultan y reaparecen, editables, donde está el cursor.
 
-- Encabezados, tablas, listas, citas, enlaces y bloques de código.
+- Encabezados, tablas, listas, citas, enlaces, imágenes (por URL) y bloques de código.
 
 - Organización por carpetas y espacios de trabajo.
 

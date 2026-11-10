@@ -304,8 +304,13 @@ títulos de una línea se ven con su tamaño mientras se escriben.
 - Atajos: `Ctrl+B` negrita, `Ctrl+I` cursiva, `Ctrl+E` código, `Ctrl+Shift+X`
   tachado, `Ctrl+K` enlace. Pegar una URL con texto seleccionado crea un enlace.
 - Deshacer (`Ctrl+Z`) solo deshace lo propio, no lo que escriben los demás.
+- Imágenes `![descripción](https://…)`: se ven en la nota; con el cursor encima
+  reaparece su Markdown. Solo se cargan URLs `http(s)`, sin enviar la dirección de
+  la nota (`Referer`). No se suben imágenes: se enlazan las que ya están en la web.
+- Ayuda: `?` muestra todos los atajos de teclado; el menú «…» de la nota abre la
+  guía de Markdown (con buscador), que se puede tener abierta mientras se escribe.
 
-Tablas, imágenes y fórmulas se ven, por ahora, como su Markdown.
+Tablas y fórmulas se ven, por ahora, como su Markdown.
 
 ### Markdown
 

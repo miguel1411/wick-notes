@@ -8,6 +8,8 @@
  *   selección.
  * - Marcas en línea (negrita, cursiva, código, tachado, enlaces): visibles si la
  *   selección toca ese elemento.
+ * - Imágenes (`![texto](url)`): se ve la imagen; si la selección la toca, aparece
+ *   también el Markdown encima para editarlo.
  * - Sin foco (o para un lector) no hay nada «activo»: todo se ve con formato.
  *
  * Nada de esto cambia el texto: la nota es siempre el Markdown tal cual.
@@ -77,6 +79,57 @@ class TaskWidget extends WidgetType {
   override ignoreEvent() {
     return true
   }
+}
+
+/**
+ * Imagen de `![texto](url)`. Solo URLs http(s), sin Referer (el servidor de la
+ * imagen no ve la dirección de la nota) y con carga diferida. Si no carga, se
+ * muestra un aviso con su descripción en lugar del icono roto.
+ */
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly url: string,
+    readonly alt: string,
+    readonly title: string | null,
+  ) {
+    super()
+  }
+  override eq(other: ImageWidget) {
+    return other.url === this.url && other.alt === this.alt && other.title === this.title
+  }
+  toDOM(view: EditorView) {
+    const wrap = document.createElement('span')
+    wrap.className = 'cm-md-image'
+    const img = document.createElement('img')
+    img.alt = this.alt
+    if (this.title) img.title = this.title
+    img.loading = 'lazy'
+    img.decoding = 'async'
+    img.referrerPolicy = 'no-referrer'
+    img.draggable = false
+    // La altura de la línea cambia al cargar: que el editor la vuelva a medir.
+    img.addEventListener('load', () => view.requestMeasure())
+    img.addEventListener('error', () => {
+      const note = document.createElement('span')
+      note.className = 'cm-md-image-error'
+      note.textContent = this.alt ? `No se pudo cargar la imagen «${this.alt}»` : 'No se pudo cargar la imagen'
+      wrap.replaceChildren(note)
+      view.requestMeasure()
+    })
+    img.src = this.url
+    wrap.append(img)
+    return wrap
+  }
+  // Un clic en la imagen deja el cursor junto a ella y muestra su Markdown.
+  override ignoreEvent() {
+    return false
+  }
+}
+
+/** Solo se cargan imágenes de http(s) (nunca `javascript:`, `data:` ni rutas locales). */
+function safeImageUrl(raw: string): string | null {
+  const url = raw.trim().replace(/^<|>$/g, '')
+  return /^https?:\/\//i.test(url) ? url : null
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
@@ -172,6 +225,8 @@ function buildDecorations(view: EditorView): DecorationSet {
             // Se sigue por dentro: puede haber negrita o código en el texto del enlace.
             decorateLink(node)
             return
+          case 'Image':
+            return decorateImage(node)
           case 'URL':
           case 'Autolink':
             // Enlace suelto (https://…) o <https://…>.
@@ -206,6 +261,37 @@ function buildDecorations(view: EditorView): DecorationSet {
     }
     out.push(hidden.range(open.from, open.to))
     out.push(hidden.range(close.from, node.to))
+  }
+
+  /**
+   * `![texto](url)`: fuera del cursor, la imagen en lugar del texto. Si el cursor
+   * la toca, el Markdown (atenuado) y la imagen debajo, para no perderla de vista.
+   * Devuelve false para no decorar por dentro lo que queda oculto.
+   */
+  function decorateImage(node: SyntaxNode): false | undefined {
+    const urlNode = node.getChild('URL')
+    const url = urlNode && safeImageUrl(doc.sliceString(urlNode.from, urlNode.to))
+    const marks = childrenOf(node, 'LinkMark')
+    const titleNode = node.getChild('LinkTitle')
+    const showSyntax = () => {
+      for (const m of marks) out.push(mark.range(m.from, m.to))
+      if (urlNode) out.push(mark.range(urlNode.from, urlNode.to))
+      if (titleNode) out.push(mark.range(titleNode.from, titleNode.to))
+    }
+    if (!url || !marks[0] || !marks[1]) {
+      showSyntax() // sin URL o con una que no se carga: se queda como texto
+      return
+    }
+    const alt = doc.sliceString(marks[0].to, marks[1].from).replace(/[*_`~]/g, '').trim()
+    const title = titleNode ? doc.sliceString(titleNode.from + 1, titleNode.to - 1) : null
+    const widget = new ImageWidget(url, alt, title)
+    if (touches(node.from, node.to)) {
+      showSyntax()
+      out.push(Decoration.widget({ widget, side: 1 }).range(node.to))
+      return
+    }
+    out.push(Decoration.replace({ widget }).range(node.from, node.to))
+    return false
   }
 
   /** Viñetas: «•» en lugar de `-`; en tareas solo queda la casilla. */

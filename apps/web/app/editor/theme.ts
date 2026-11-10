@@ -70,6 +70,26 @@ export const wickTheme = EditorView.theme({
     accentColor: 'var(--ui-primary)',
     cursor: 'pointer',
   },
+  // Imágenes: ocupan su propia franja, sin pasar del ancho del texto. inline-block
+  // (no block) para no dejar líneas vacías alrededor del widget.
+  '.cm-md-image': { display: 'inline-block', width: '100%', verticalAlign: 'top', margin: '0.5em 0' },
+  '.cm-md-image img': {
+    display: 'block',
+    maxWidth: '100%',
+    maxHeight: '32rem',
+    height: 'auto',
+    borderRadius: '8px',
+    border: '1px solid var(--ui-border)',
+    cursor: 'text',
+  },
+  '.cm-md-image-error': {
+    display: 'inline-block',
+    fontSize: '0.85em',
+    color: 'var(--ui-text-muted)',
+    backgroundColor: 'var(--ui-bg-elevated)',
+    borderRadius: '6px',
+    padding: '0.2em 0.6em',
+  },
   '.cm-md-hr': {
     display: 'inline-block',
     width: '100%',

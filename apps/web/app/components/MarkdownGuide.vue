@@ -52,7 +52,7 @@ const groups: { title: string; entries: Entry[] }[] = [
     entries: [
       { title: 'Enlace', syntax: '[texto](https://ejemplo.com)', description: 'Ctrl/⌘ + clic lo abre. Pegar una URL sobre texto seleccionado también crea el enlace.', keys: ['meta', 'K'], keywords: 'link url vinculo hipervinculo' },
       { title: 'Enlace directo', syntax: '<https://ejemplo.com>', description: 'Una URL que empieza por https:// o www. ya funciona como enlace.', keywords: 'autolink url' },
-      { title: 'Imagen', syntax: '![Descripción](https://ejemplo.com/foto.png)', description: 'Se guarda y se exporta como imagen en Markdown. El editor muestra el texto, no la imagen.', keywords: 'image picture foto img' },
+      { title: 'Imagen', syntax: '![Descripción](https://ejemplo.com/foto.png)', description: 'El editor la muestra si la URL empieza por https:// (o http://). Al poner el cursor encima reaparece el texto para editarlo.', keywords: 'image picture foto img' },
     ],
   },
   {
