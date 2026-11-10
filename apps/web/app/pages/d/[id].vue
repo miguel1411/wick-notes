@@ -7,6 +7,7 @@ const id = computed(() => String(route.params.id))
 const { renameDocument, deleteDocument, moveDocument, refresh: refreshList } = useDocuments()
 const { workspaces, current, select: selectWorkspace } = useWorkspaces()
 const confirm = useConfirmDialog()
+const { toggleMarkdownGuide } = useHelp()
 const { data: doc, error, refresh: refreshDoc } = await useFetch<DocumentDetail>(() => `/api/documents/${id.value}`)
 
 const canEdit = computed(() => !!doc.value?.canEdit)
@@ -70,6 +71,7 @@ async function onDelete() {
 const menu = computed<DropdownMenuItem[][]>(() => [
   [
     { label: 'Historial', icon: 'i-lucide-history', onSelect: () => (historyOpen.value = true) },
+    { label: 'Guía de Markdown', icon: 'i-lucide-book-open-text', onSelect: toggleMarkdownGuide },
     {
       label: 'Descargar Markdown',
       icon: 'i-lucide-file-down',

@@ -6,6 +6,10 @@ const { canWrite } = useWorkspaces()
 const { user, isAdmin, logout } = useAuth()
 const colorMode = useColorMode()
 const sourceUrl = useSourceUrl()
+const { openShortcuts, toggleMarkdownGuide } = useHelp()
+
+// «?» fuera del editor y de los campos de texto.
+defineShortcuts({ '?': openShortcuts })
 const tree = ref<{ newFolder: (parentId?: string | null) => void }>()
 
 const fileInput = ref<HTMLInputElement>()
@@ -41,7 +45,11 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
       })),
     },
   ],
-  [{ label: 'Código fuente', icon: 'i-lucide-code-xml', to: sourceUrl, target: '_blank' }],
+  [
+    { label: 'Guía de Markdown', icon: 'i-lucide-book-open-text', onSelect: toggleMarkdownGuide },
+    { label: 'Atajos de teclado', icon: 'i-lucide-keyboard', kbds: ['?'], onSelect: openShortcuts },
+    { label: 'Código fuente', icon: 'i-lucide-code-xml', to: sourceUrl, target: '_blank' },
+  ],
   [{ label: 'Cerrar sesión', icon: 'i-lucide-log-out', onSelect: () => logout() }],
 ])
 </script>
