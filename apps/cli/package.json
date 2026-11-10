@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "CLI de wick notes: tus notas desde la terminal",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
     "wick": "dist/wick.mjs"

@@ -378,4 +378,10 @@ navegador deben venir del mismo origen.
 
 ## Licencia
 
-Pendiente de definir.
+Copyright (C) 2026 Miguel Corona
+
+wick notes es software libre con licencia [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
+
+- Puedes usarlo, estudiarlo, modificarlo y redistribuirlo, también con fines comerciales.
+- Si distribuyes una versión modificada, o la ofreces como servicio en red a otras personas, tienes que publicar su código fuente con la misma licencia.
+- Se ofrece sin garantía de ningún tipo. El texto completo, en `LICENSE`, es el que vale.
