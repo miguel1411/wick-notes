@@ -348,7 +348,7 @@ No debemos introducir infraestructura distribuida, dependencias externas obligat
 
 - Crear, editar, renombrar y eliminar documentos.
 
-- Editor visual basado en Markdown.
+- Editor Markdown con vista previa en vivo: los símbolos se ocultan y reaparecen, editables, donde está el cursor.
 
 - Encabezados, tablas, listas, citas, enlaces y bloques de código.
 
@@ -482,7 +482,7 @@ La arquitectura inicial estará basada en:
 
 | Componentes UI | Nuxt UI + Tailwind CSS |
 
-| Editor | Milkdown 7 + Crepe |
+| Editor | CodeMirror 6 (Markdown con vista previa en vivo) |
 
 | Colaboración | Yjs |
 
@@ -508,7 +508,7 @@ El proyecto se organizará como un monorepositorio para reutilizar módulos, esq
 
 
 
-El estado colaborativo Yjs será la fuente principal de verdad durante la edición. El contenido Markdown se generará o importará mediante conversiones compatibles con el esquema del editor.
+El estado colaborativo Yjs será la fuente principal de verdad durante la edición. Contiene el propio texto Markdown de cada documento, sin conversiones: lo que se escribe es exactamente lo que se guarda, se exporta y leen la CLI y los agentes.
 
 
 

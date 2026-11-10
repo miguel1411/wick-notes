@@ -51,6 +51,12 @@ docker compose up -d --build
 Las migraciones se aplican solas y nunca borran datos. `docker compose down`
 conserva los datos; **`docker compose down -v` los elimina**.
 
+Al actualizar desde una versión con el editor anterior (Milkdown), el servidor
+de colaboración pasa al arrancar las notas y sus versiones al formato actual
+(texto Markdown), una sola vez. Conviene hacer antes un respaldo
+(`scripts/backup.sh`). Las pestañas que sigan abiertas con la web antigua no
+pueden conectarse: basta con recargarlas.
+
 ### Respaldos
 
 ```bash
@@ -161,7 +167,7 @@ apps/
 packages/
   core/      Reglas de negocio. Web, colaboración (y en el futuro CLI y MCP) pasan por aquí
   db/        Esquema Prisma, migraciones y cliente de PostgreSQL
-  markdown/  Conversión Markdown ↔ Yjs con el mismo editor que la web (en un hilo aparte)
+  markdown/  Conversor del formato anterior (Milkdown) a Markdown; solo para migrar notas antiguas
 ```
 
 ### Búsqueda
@@ -273,12 +279,28 @@ propias solicitudes. Al aprobar se vuelven a comprobar tus permisos.
 Lo que escribe un agente aparece al momento en el editor de quien tenga la nota
 abierta, sin pisar lo que esa persona esté escribiendo.
 
+### Editor
+
+Se escribe Markdown con vista previa en vivo (CodeMirror 6):
+los símbolos (`##`, `**`, `[texto](url)`, `>`…) se ocultan y el texto se ve con
+formato; donde está el cursor reaparecen y se corrigen como texto normal. Los
+títulos de una línea se ven con su tamaño mientras se escriben.
+
+- Listas: Enter continúa la lista (o la cita, o la tarea); Enter en un elemento
+  vacío la termina. `Tab` / `Shift+Tab` sangran.
+- Tareas `- [ ]`: la casilla se marca con un clic.
+- Enlaces: `Ctrl`/`⌘` + clic los abre en otra pestaña.
+- Atajos: `Ctrl+B` negrita, `Ctrl+I` cursiva, `Ctrl+E` código, `Ctrl+Shift+X`
+  tachado, `Ctrl+K` enlace. Pegar una URL con texto seleccionado crea un enlace.
+- Deshacer (`Ctrl+Z`) solo deshace lo propio, no lo que escriben los demás.
+
+Tablas, imágenes y fórmulas se ven, por ahora, como su Markdown.
+
 ### Markdown
 
-El formato de intercambio es Markdown (CommonMark + GFM: tablas, tareas,
-tachado; y fórmulas `$…$`). La conversión usa el mismo editor que la web
-(Milkdown Crepe) sobre un DOM simulado, dentro de un hilo del servidor de
-colaboración, así que lo que se exporta se vuelve a importar igual.
+Cada nota **es** su texto Markdown (CommonMark + GFM: tablas, tareas, tachado).
+No hay conversión: lo que se escribe es lo que se guarda, se exporta y leen la
+CLI y los agentes, carácter por carácter.
 
 - **Exportar:** menú «…» de la nota → *Descargar Markdown*. El fichero empieza
   por `# Título`.
@@ -291,8 +313,8 @@ colaboración, así que lo que se exporta se vuelve a importar igual.
 La web habla con el servidor de colaboración por una API interna protegida con
 un secreto derivado de `DATABASE_URL` (o `WICK_SERVICE_SECRET` si se define).
 
-El contenido de cada nota se guarda como estado **Yjs** (la fuente de verdad
-durante la edición). El servidor de colaboración lo guarda con 2 s de
+El contenido de cada nota se guarda como estado **Yjs** con el texto Markdown
+dentro (la fuente de verdad durante la edición). El servidor de colaboración lo guarda con 2 s de
 inactividad, como mucho cada 10 s mientras se escribe, y siempre al apagarse.
 
 ### API
