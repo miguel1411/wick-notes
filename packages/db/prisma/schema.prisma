@@ -30,6 +30,8 @@ model User {
   versions   DocumentVersion[]
   workspaces WorkspaceMember[]
   createdWorkspaces Workspace[] @relation("WorkspaceCreatedBy")
+  moveRequests      MoveRequest[] @relation("MoveRequestedBy")
+  moveDecisions     MoveRequest[] @relation("MoveDecidedBy")
 }
 
 enum WorkspaceRole {
@@ -117,6 +119,7 @@ model ApiToken {
   createdAt  DateTime   @default(now())
   lastUsedAt DateTime?
   expiresAt  DateTime?
+  moveRequests MoveRequest[]
 
   @@index([userId])
 }
@@ -142,9 +145,46 @@ model Document {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   versions    DocumentVersion[]
+  moveRequests MoveRequest[]
 
   @@index([updatedAt])
   @@index([workspaceId, folderId])
+}
+
+enum MoveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Aprobada, pero no se pudo mover (p. ej. la carpeta ya no existe).
+  FAILED
+  /// Sustituida por otra solicitud más reciente para la misma nota.
+  SUPERSEDED
+}
+
+/// Un agente (token de API) propone mover una nota; una persona la aprueba en la web.
+model MoveRequest {
+  id                String            @id @default(cuid())
+  documentId        String
+  document          Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  requestedById     String
+  requestedBy       User              @relation("MoveRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  /// Token con el que se pidió (el agente); null si se revocó.
+  tokenId           String?
+  token             ApiToken?         @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  targetWorkspaceId String
+  /// null = raíz del espacio.
+  targetFolderId    String?
+  /// Por qué lo propone el agente.
+  reason            String?
+  status            MoveRequestStatus @default(PENDING)
+  decidedById       String?
+  decidedBy         User?             @relation("MoveDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt         DateTime?
+  error             String?
+  createdAt         DateTime          @default(now())
+
+  @@index([requestedById, status])
+  @@index([documentId, status])
 }
 
 enum VersionReason {

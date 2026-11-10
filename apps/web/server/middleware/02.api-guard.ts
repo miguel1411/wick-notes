@@ -2,7 +2,9 @@
 const PUBLIC_API = new Set(['/api/health', '/api/auth/state', '/api/auth/login', '/api/auth/setup', '/api/auth/logout'])
 /**
  * Lo único que se puede hacer con un token de API: trabajar con notas y saber
- * quién es. Gestionar usuarios, contraseñas o tokens exige una sesión de navegador.
+ * quién es. Gestionar usuarios, contraseñas, tokens o aprobar solicitudes de
+ * movimiento (/api/move-requests) exige una sesión de navegador: así un agente
+ * nunca puede aprobar sus propias solicitudes.
  */
 const TOKEN_API = [/^\/api\/documents(\/|$)/, /^\/api\/workspaces(\/|$)/, /^\/api\/folders(\/|$)/, /^\/api\/auth\/state$/]
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])

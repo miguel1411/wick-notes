@@ -1,9 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
   createDocument,
+  getWorkspaceTrees,
   listDocuments,
+  listMoveRequests,
   listVersions,
   listWorkspaces,
+  requestMove,
+  resolveFolder,
   renameDocument,
   requireDocumentAccess,
   searchDocuments,
@@ -11,6 +15,8 @@ import {
   type AuthUser,
   type DocumentSummary,
   type TokenScope,
+  type TreeFolderNode,
+  type TreeNote,
 } from '@wick/core'
 import { z } from 'zod'
 
@@ -21,7 +27,7 @@ import { z } from 'zod'
  * por el servidor de colaboración), y con un token de solo lectura las de
  * escritura ni siquiera se registran: el agente solo ve lo que puede hacer.
  */
-export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; origin: string; version: string }) {
+export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; tokenId?: string; origin: string; version: string }) {
   const { user, scope, origin } = opts
   const server = new McpServer(
     { name: 'wick-notes', title: 'wick notes', version: opts.version },
@@ -138,6 +144,64 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
   )
 
   server.registerTool(
+    'notes_tree',
+    {
+      title: 'Árbol de carpetas y notas',
+      description:
+        'Muestra la estructura completa: cada espacio de trabajo con sus carpetas anidadas y sus notas (con ids). Úsalo para entender cómo está organizado todo antes de proponer movimientos.',
+      inputSchema: { workspace: z.string().optional().describe('Nombre o id de un espacio (por defecto, todos)') },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safe(async ({ workspace }) => {
+      const workspaceId = workspace ? (await resolveWorkspace(workspace)).id : undefined
+      const trees = await getWorkspaceTrees(user, workspaceId)
+      const ROLE = { owner: 'propietario', editor: 'editor', viewer: 'solo lectura' }
+      const out: string[] = []
+      const note = (n: TreeNote, depth: number) => out.push(`${'  '.repeat(depth)}- ${n.title} (id: ${n.id})`)
+      const folder = (f: TreeFolderNode, depth: number) => {
+        out.push(`${'  '.repeat(depth)}${f.name}/ (carpeta, id: ${f.id})`)
+        for (const sub of f.folders) folder(sub, depth + 1)
+        for (const n of f.notes) note(n, depth + 1)
+        if (!f.folders.length && !f.notes.length) out.push(`${'  '.repeat(depth + 1)}(vacía)`)
+      }
+      for (const t of trees) {
+        out.push(`# ${t.name} (${t.everyone ? 'para todos' : 'privado'}; tu rol: ${ROLE[t.role]}; id: ${t.id})`)
+        for (const f of t.folders) folder(f, 0)
+        for (const n of t.notes) note(n, 0)
+        if (!t.folders.length && !t.notes.length) out.push('(espacio vacío)')
+        out.push('')
+      }
+      return text(out.join('\n').trim() || 'No tienes acceso a ningún espacio de trabajo.')
+    }),
+  )
+
+  server.registerTool(
+    'notes_move_requests',
+    {
+      title: 'Solicitudes de movimiento',
+      description:
+        'Lista las solicitudes de mover notas hechas con notes_move y su estado: pendiente (esperando a que una persona la apruebe en wick notes), aprobada, rechazada, fallida o sustituida.',
+      inputSchema: {
+        status: z.enum(['pending', 'approved', 'rejected', 'failed', 'superseded']).optional().describe('Filtrar por estado'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safe(async ({ status }) => {
+      const requests = await listMoveRequests(user, { status, limit: 30 })
+      if (!requests.length) return text('No hay solicitudes de movimiento.')
+      const STATUS = { pending: 'pendiente', approved: 'aprobada', rejected: 'rechazada', failed: 'fallida', superseded: 'sustituida' }
+      return text(
+        requests
+          .map(
+            (r) =>
+              `- «${r.document.title}»: ${r.from.path} → ${r.to.path} · ${STATUS[r.status]}${r.error ? ` (${r.error})` : ''} · ${r.createdAt.toISOString()} (solicitud: ${r.id})`,
+          )
+          .join('\n'),
+      )
+    }),
+  )
+
+  server.registerTool(
     'notes_history',
     {
       title: 'Historial de una nota',
@@ -208,6 +272,35 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
       await requireDocumentAccess(user, doc.id, 'write')
       await writeDocumentMarkdown(doc.id, user.id, markdown, 'append')
       return text(`Añadido al final de «${doc.title}» (id: ${doc.id}).`)
+    }),
+  )
+
+  server.registerTool(
+    'notes_move',
+    {
+      title: 'Proponer mover una nota',
+      description:
+        'NO mueve la nota: crea una solicitud que una persona debe aprobar en wick notes. Indica la nota, la carpeta de destino (id o ruta como «Infra/Servidores») y, si es otro espacio, el espacio. Sin carpeta, el destino es la raíz del espacio. Explica en `reason` por qué. Consulta el resultado con notes_move_requests.',
+      inputSchema: {
+        note: z.string().min(1).describe('Id o título de la nota'),
+        folder: z.string().optional().describe('Carpeta de destino: id o ruta («Infra/Servidores»). Sin indicar: raíz del espacio'),
+        workspace: z.string().optional().describe('Espacio de destino (nombre o id); por defecto, el de la nota'),
+        reason: z.string().max(500).optional().describe('Por qué propones moverla (lo verá la persona que aprueba)'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    safe(async ({ note, folder, workspace, reason }) => {
+      const doc = await resolveNote(user, note)
+      const workspaceId = workspace ? (await resolveWorkspace(workspace)).id : doc.workspaceId
+      const folderId = folder ? await resolveFolder(user, workspaceId, folder) : null
+      const req = await requestMove(user, { documentId: doc.id, workspaceId, folderId, reason }, { tokenId: opts.tokenId })
+      return text(
+        [
+          `Solicitud creada (pendiente de aprobación): «${req.document.title}»: ${req.from.path} → ${req.to.path}.`,
+          `La nota NO se ha movido todavía. Pide a la persona que la apruebe en ${origin}/moves.`,
+          `Id de la solicitud: ${req.id}`,
+        ].join('\n'),
+      )
     }),
   )
 

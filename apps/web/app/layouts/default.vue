@@ -92,6 +92,8 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
 
         <UDashboardSearchButton :collapsed="collapsed" label="Buscar" class="bg-transparent ring-default" />
 
+        <PendingMovesButton :collapsed="collapsed" />
+
         <WorkspaceTree v-show="!collapsed" ref="tree" class="pt-2" />
       </template>
 

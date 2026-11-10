@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const server = createWickMcpServer({
     user: auth.user,
     scope: auth.scope,
+    tokenId: auth.tokenId,
     origin: getRequestURL(event, { xForwardedHost: trustProxy(), xForwardedProto: trustProxy() }).origin,
     version: '0.1.0',
   })

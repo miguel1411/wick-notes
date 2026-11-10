@@ -258,8 +258,17 @@ claude mcp add wick -- wick mcp
 | `notes_append`  | Añade al final de una nota                             | escritura |
 | `notes_update`  | Reescribe una nota (por diferencias) y/o la renombra   | escritura |
 | `notes_history` | Versiones de una nota, o el contenido de una           | lectura |
+| `notes_tree`    | Árbol completo: espacios, carpetas anidadas y notas    | lectura |
+| `notes_move`    | **Propone** mover una nota a una carpeta o espacio (no la mueve) | escritura |
+| `notes_move_requests` | Estado de las solicitudes de movimiento          | lectura |
 
 Con un token de solo lectura, el agente no ve las herramientas de escritura.
+
+**Mover notas siempre requiere tu aprobación.** `notes_move` solo crea una
+solicitud; en la barra lateral de wick notes aparece «N movimientos por aprobar»
+y en esa página apruebas o rechazas cada una (o todas). Aprobar solo es posible
+con sesión de navegador: un token, y por tanto un agente, no puede aprobar sus
+propias solicitudes. Al aprobar se vuelven a comprobar tus permisos.
 Lo que escribe un agente aparece al momento en el editor de quien tenga la nota
 abierta, sin pisar lo que esa persona esté escribiendo.
 
@@ -317,6 +326,8 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |
 | `PATCH`  | `/api/documents/:id`   | `{ title?, workspaceId?, folderId? }` (renombrar y/o mover) |
 | `DELETE` | `/api/documents/:id`   | Elimina                              |
+| `GET`    | `/api/move-requests`   | Movimientos propuestos por mis agentes (`?status=pending`). Solo con sesión |
+| `POST`   | `/api/move-requests/:id/approve` · `/reject` | Aprobar (mueve la nota) o rechazar. Solo con sesión |
 | `GET`    | `/api/documents/search` | Búsqueda en título y contenido (`?q=`, `?limit=`) con fragmentos |
 | `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |
 | `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append" }` |
