@@ -37,9 +37,15 @@ const view = computed(() => {
 
 <template>
   <UTooltip :text="view.hint" :disabled="!view.hint">
-    <UBadge :color="view.color" variant="subtle" size="md" class="gap-1.5" role="status" aria-live="polite">
-      <UIcon :name="view.icon" class="size-4" :class="{ 'animate-spin': view.spin }" />
-      <span class="hidden sm:inline">{{ view.label }}</span>
-    </UBadge>
+    <UBadge
+      :label="view.label"
+      :icon="view.icon"
+      :color="view.color"
+      variant="subtle"
+      size="md"
+      role="status"
+      aria-live="polite"
+      :ui="{ leadingIcon: view.spin ? 'animate-spin' : '', label: 'hidden sm:inline' }"
+    />
   </UTooltip>
 </template>

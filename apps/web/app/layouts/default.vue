@@ -21,12 +21,23 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     { label: 'Mi cuenta', icon: 'i-lucide-user-cog', to: '/account' },
     ...(isAdmin.value ? [{ label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/users' }] : []),
     {
-      label: colorMode.value === 'dark' ? 'Tema claro' : 'Tema oscuro',
-      icon: colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon',
-      onSelect: (e: Event) => {
-        e.preventDefault()
-        colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
-      },
+      label: 'Apariencia',
+      icon: 'i-lucide-sun-moon',
+      children: (
+        [
+          { label: 'Claro', icon: 'i-lucide-sun', value: 'light' },
+          { label: 'Oscuro', icon: 'i-lucide-moon', value: 'dark' },
+          { label: 'Como el sistema', icon: 'i-lucide-monitor', value: 'system' },
+        ] as const
+      ).map(({ value, ...item }) => ({
+        ...item,
+        type: 'checkbox' as const,
+        checked: colorMode.preference === value,
+        onSelect: (e: Event) => {
+          e.preventDefault()
+          colorMode.preference = value
+        },
+      })),
     },
   ],
   [{ label: 'Cerrar sesión', icon: 'i-lucide-log-out', onSelect: () => logout() }],
@@ -35,9 +46,26 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
 
 <template>
   <UDashboardGroup unit="rem">
-    <UDashboardSidebar collapsible resizable class="bg-elevated/25" :ui="{ footer: 'border-t border-default' }">
+    <!--
+      Al plegar/desplegar, el ancho se anima como en USidebar (200 ms), salvo al
+      arrastrar el borde. collapsed-size = 4 (rem) coincide con su min-w-16, para
+      que la animación recorra todo el trayecto en vez de frenar contra el mínimo.
+      Mientras cambia el ancho, el contenido se recorta en lugar de partirse en líneas.
+    -->
+    <UDashboardSidebar
+      collapsible
+      resizable
+      :collapsed-size="4"
+      class="bg-elevated/25"
+      :ui="{
+        root: 'transition-[width] duration-200 ease-out data-[dragging=true]:transition-none motion-reduce:transition-none',
+        header: 'overflow-hidden',
+        body: 'overflow-x-hidden',
+        footer: 'overflow-hidden border-t border-default',
+      }"
+    >
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-2 font-semibold text-highlighted">
+        <NuxtLink to="/" class="flex items-center gap-2 font-semibold whitespace-nowrap text-highlighted">
           <img src="/favicon.svg" alt="" class="size-6 shrink-0" />
           <span v-if="!collapsed">wick notes</span>
         </NuxtLink>

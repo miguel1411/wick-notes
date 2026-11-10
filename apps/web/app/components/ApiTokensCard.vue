@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { FormSubmitEvent } from '@nuxt/ui'
+import { createApiTokenInput } from '@wick/core/auth/schemas'
+
 interface TokenRow {
   id: string
   name: string
@@ -10,6 +13,7 @@ interface TokenRow {
 }
 
 const toast = useToast()
+const confirm = useConfirmDialog()
 const { data: tokens, refresh } = await useFetch<TokenRow[]>('/api/tokens', { default: () => [] })
 
 const scopeItems = [
@@ -28,8 +32,10 @@ const fmt = (d: string | null) => (d ? dateFormat.format(new Date(d)) : null)
 const isExpired = (t: TokenRow) => !!t.expiresAt && new Date(t.expiresAt) < new Date()
 
 // --- Crear ---
+// El formulario solo valida el nombre: permisos y caducidad salen de un selector.
+const createSchema = createApiTokenInput.pick({ name: true })
 const createOpen = ref(false)
-const form = reactive({ name: '', scope: 'read' as 'read' | 'write', expiresInDays: 90 })
+const state = reactive({ name: '', scope: 'read' as 'read' | 'write', expiresInDays: 90 })
 const createError = ref('')
 const creating = ref(false)
 const newToken = ref<string | null>(null)
@@ -49,19 +55,19 @@ const cliCommands = computed(() =>
 )
 
 function openCreate() {
-  Object.assign(form, { name: '', scope: 'read', expiresInDays: 90 })
+  Object.assign(state, { name: '', scope: 'read', expiresInDays: 90 })
   createError.value = ''
   newToken.value = null
   createOpen.value = true
 }
 
-async function submitCreate() {
+async function submitCreate(event: FormSubmitEvent<{ name: string }>) {
   createError.value = ''
   creating.value = true
   try {
     const result = await $fetch<{ token: string }>('/api/tokens', {
       method: 'POST',
-      body: { name: form.name, scope: form.scope, expiresInDays: form.expiresInDays || null },
+      body: { name: event.data.name, scope: state.scope, expiresInDays: state.expiresInDays || null },
     })
     newToken.value = result.token
     await refresh()
@@ -83,23 +89,25 @@ async function copyToken() {
 }
 
 // --- Revocar ---
-const revokeTarget = ref<TokenRow | null>(null)
-const revoking = ref(false)
-
-async function confirmRevoke() {
-  if (!revokeTarget.value) return
-  revoking.value = true
-  try {
-    const url: string = `/api/tokens/${revokeTarget.value.id}`
-    await $fetch(url, { method: 'DELETE' })
-    toast.add({ title: `Token «${revokeTarget.value.name}» revocado`, color: 'success', icon: 'i-lucide-check' })
-    revokeTarget.value = null
-    await refresh()
-  } catch (err) {
-    toast.add({ title: 'No se pudo revocar', description: apiErrorMessage(err), color: 'error' })
-  } finally {
-    revoking.value = false
-  }
+function revoke(t: TokenRow) {
+  return confirm({
+    title: `¿Revocar «${t.name}»?`,
+    description: 'Lo que use este token dejará de funcionar al momento.',
+    confirmLabel: 'Revocar',
+    confirmIcon: 'i-lucide-trash-2',
+    color: 'error',
+    action: async () => {
+      try {
+        const url: string = `/api/tokens/${t.id}`
+        await $fetch(url, { method: 'DELETE' })
+        toast.add({ title: `Token «${t.name}» revocado`, color: 'success', icon: 'i-lucide-check' })
+        await refresh()
+      } catch (err) {
+        toast.add({ title: 'No se pudo revocar', description: apiErrorMessage(err), color: 'error' })
+        return false
+      }
+    },
+  })
 }
 </script>
 
@@ -138,7 +146,7 @@ async function confirmRevoke() {
           color="error"
           variant="ghost"
           :aria-label="`Revocar ${t.name}`"
-          @click="revokeTarget = t"
+          @click="revoke(t)"
         />
       </li>
     </ul>
@@ -148,6 +156,7 @@ async function confirmRevoke() {
     v-model:open="createOpen"
     :title="newToken ? 'Token creado' : 'Nuevo token de acceso'"
     :dismissible="!newToken"
+    :ui="{ footer: 'justify-end' }"
   >
     <template #body>
       <div v-if="newToken" class="space-y-3">
@@ -177,43 +186,25 @@ async function confirmRevoke() {
           </p>
         </div>
       </div>
-      <form v-else id="create-token" class="space-y-4" @submit.prevent="submitCreate">
+      <UForm v-else id="create-token" :schema="createSchema" :state="state" class="space-y-4" @submit="submitCreate">
         <UAlert v-if="createError" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="createError" />
         <UFormField label="Nombre" name="name" help="Para reconocerlo, p. ej. «CLI del portátil» o «Claude Code».">
-          <UInput v-model="form.name" required autofocus class="w-full" />
+          <UInput v-model="state.name" required autofocus class="w-full" />
         </UFormField>
         <UFormField label="Permisos" name="scope">
-          <USelect v-model="form.scope" :items="scopeItems" class="w-full" />
+          <USelect v-model="state.scope" :items="scopeItems" class="w-full" />
         </UFormField>
-        <UFormField label="Caducidad" name="expires">
-          <USelect v-model="form.expiresInDays" :items="expiryItems" class="w-full" />
+        <UFormField label="Caducidad" name="expiresInDays">
+          <USelect v-model="state.expiresInDays" :items="expiryItems" class="w-full" />
         </UFormField>
-      </form>
+      </UForm>
     </template>
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <template v-if="newToken">
-          <UButton label="Hecho" @click="createOpen = false" />
-        </template>
-        <template v-else>
-          <UButton label="Cancelar" color="neutral" variant="ghost" @click="createOpen = false" />
-          <UButton type="submit" form="create-token" label="Crear token" :loading="creating" />
-        </template>
-      </div>
-    </template>
-  </UModal>
-
-  <UModal
-    :open="!!revokeTarget"
-    :title="`¿Revocar «${revokeTarget?.name ?? ''}»?`"
-    description="Lo que use este token dejará de funcionar al momento."
-    @update:open="(open) => !open && (revokeTarget = null)"
-  >
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="revokeTarget = null" />
-        <UButton label="Revocar" color="error" icon="i-lucide-trash-2" :loading="revoking" @click="confirmRevoke" />
-      </div>
+    <template #footer="{ close }">
+      <UButton v-if="newToken" label="Hecho" @click="close" />
+      <template v-else>
+        <UButton label="Cancelar" color="neutral" variant="ghost" @click="close" />
+        <UButton type="submit" form="create-token" label="Crear token" :loading="creating" />
+      </template>
     </template>
   </UModal>
 </template>

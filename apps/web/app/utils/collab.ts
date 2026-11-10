@@ -42,3 +42,22 @@ export function resolveCollabUrl(configured: string, port: number | string): str
 export const COLLAB_CONTENT_KEY = 'markdown'
 /** Formato que el editor anuncia al conectarse; el servidor rechaza otros. */
 export const COLLAB_CONTENT_FORMAT = 'markdown-v1'
+
+/**
+ * Props de UAvatar para una persona: iniciales sobre su color de colaboración.
+ * Se usa en UserAvatar y en el `avatar` de UUser para que ambos se vean igual.
+ */
+export function userAvatar(user: { id: string; name: string }) {
+  const initials = user.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('')
+  return {
+    alt: user.name,
+    text: initials,
+    style: { backgroundColor: userColor(user.id) },
+    ui: { fallback: 'text-white font-medium' },
+  }
+}

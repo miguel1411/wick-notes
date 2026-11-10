@@ -6,6 +6,7 @@ const id = computed(() => String(route.params.id))
 
 const { renameDocument, deleteDocument, moveDocument, refresh: refreshList } = useDocuments()
 const { workspaces, current, select: selectWorkspace } = useWorkspaces()
+const confirm = useConfirmDialog()
 const { data: doc, error, refresh: refreshDoc } = await useFetch<DocumentDetail>(() => `/api/documents/${id.value}`)
 
 const canEdit = computed(() => !!doc.value?.canEdit)
@@ -54,16 +55,16 @@ async function onMove(target: { workspaceId: string; folderId: string | null }) 
 }
 
 // --- Eliminar ---
-const confirmDelete = ref(false)
-const deleting = ref(false)
-
 async function onDelete() {
-  deleting.value = true
-  const ok = await deleteDocument(id.value)
-  deleting.value = false
-  if (!ok) return
-  confirmDelete.value = false
-  await navigateTo('/')
+  const deleted = await confirm({
+    title: '¿Eliminar esta nota?',
+    description: `«${doc.value?.title}» se eliminará para todos los colaboradores, con su historial. Esta acción no se puede deshacer.`,
+    confirmLabel: 'Eliminar',
+    confirmIcon: 'i-lucide-trash-2',
+    color: 'error',
+    action: () => deleteDocument(id.value),
+  })
+  if (deleted) await navigateTo('/')
 }
 
 const menu = computed<DropdownMenuItem[][]>(() => [
@@ -78,7 +79,7 @@ const menu = computed<DropdownMenuItem[][]>(() => [
     ...(canEdit.value ? [{ label: 'Mover a…', icon: 'i-lucide-folder-input', onSelect: () => (moveOpen.value = true) }] : []),
   ],
   ...(canEdit.value
-    ? [[{ label: 'Eliminar nota', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => (confirmDelete.value = true) }]]
+    ? [[{ label: 'Eliminar nota', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: onDelete }]]
     : []),
 ])
 </script>
@@ -161,17 +162,4 @@ const menu = computed<DropdownMenuItem[][]>(() => [
     :folder-id="doc.folderId"
     @move="onMove"
   />
-
-  <UModal
-    v-model:open="confirmDelete"
-    title="¿Eliminar esta nota?"
-    :description="`«${doc?.title}» se eliminará para todos los colaboradores, con su historial. Esta acción no se puede deshacer.`"
-  >
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="confirmDelete = false" />
-        <UButton label="Eliminar" color="error" icon="i-lucide-trash-2" :loading="deleting" @click="onDelete" />
-      </div>
-    </template>
-  </UModal>
 </template>

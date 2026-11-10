@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./auth/schemas": "./src/auth/schemas.ts"
   },
   "scripts": {
     "test": "vitest run",

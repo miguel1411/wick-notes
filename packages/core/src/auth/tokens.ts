@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { getPrisma } from '@wick/db'
-import { z } from 'zod'
 import { ConflictError, NotFoundError } from '../errors'
 import { parse } from '../validation'
 import { requireActor, toAuthUser, type AuthUser } from './actor'
+import { createApiTokenInput, type CreateApiTokenInput } from './schemas'
 
 /** read: solo consultar. write: consultar, crear y modificar notas. */
 export type TokenScope = 'read' | 'write'
@@ -13,13 +13,6 @@ export const TOKEN_PREFIX = 'wick_'
 const MAX_TOKENS_PER_USER = 50
 const TOUCH_INTERVAL_MS = 60 * 60 * 1000
 
-export const createApiTokenInput = z.object({
-  name: z.string().trim().min(1, 'Ponle un nombre al token').max(80, 'El nombre no puede superar 80 caracteres'),
-  scope: z.enum(['read', 'write']).default('read'),
-  /** null o ausente = no caduca. */
-  expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
-})
-export type CreateApiTokenInput = z.input<typeof createApiTokenInput>
 
 export interface ApiTokenSummary {
   id: string

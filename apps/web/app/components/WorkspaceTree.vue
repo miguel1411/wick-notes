@@ -8,6 +8,7 @@ import type { TreeContext } from './TreeFolder.vue'
  */
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirmDialog()
 const { current, canWrite, folders, refreshFolders } = useWorkspaces()
 const { documents, createDocument, refreshAll, run } = useDocuments()
 
@@ -31,7 +32,6 @@ const toggle = (id: string) => (toggled.value = { ...toggled.value, [id]: !isExp
 
 // --- Acciones de carpetas ---
 const dialog = reactive({ open: false, mode: 'create' as 'create' | 'rename', parentId: null as string | null, folderId: '', initial: '' })
-const deleteTarget = ref<{ id: string; name: string } | null>(null)
 
 function newFolder(parentId: string | null = null) {
   Object.assign(dialog, { open: true, mode: 'create', parentId, folderId: '', initial: '' })
@@ -51,12 +51,18 @@ async function onDialogSubmit(name: string) {
   await refreshFolders()
 }
 
-async function confirmDelete() {
-  if (!deleteTarget.value) return
-  const url: string = `/api/folders/${deleteTarget.value.id}`
+async function deleteFolder(folder: FolderRow) {
+  const confirmed = await confirm({
+    title: `¿Eliminar la carpeta «${folder.name}»?`,
+    description: 'No se borra ninguna nota: lo que contiene pasa a la carpeta superior.',
+    confirmLabel: 'Eliminar carpeta',
+    confirmIcon: 'i-lucide-trash-2',
+    color: 'error',
+  })
+  if (!confirmed) return
+  const url: string = `/api/folders/${folder.id}`
   const ok = await run(() => $fetch<null>(url, { method: 'DELETE' }).then(() => true), 'No se pudo eliminar la carpeta')
-  if (ok) toast.add({ title: `Carpeta «${deleteTarget.value.name}» eliminada`, description: 'Su contenido pasó a la carpeta superior.', color: 'success' })
-  deleteTarget.value = null
+  if (ok) toast.add({ title: `Carpeta «${folder.name}» eliminada`, description: 'Su contenido pasó a la carpeta superior.', color: 'success' })
   await Promise.all([refreshFolders(), refreshAll()])
 }
 
@@ -72,7 +78,7 @@ function folderMenu(folder: FolderRow): DropdownMenuItem[][] {
         onSelect: () => Object.assign(dialog, { open: true, mode: 'rename', folderId: id, initial: folder.name }),
       },
     ],
-    [{ label: 'Eliminar carpeta', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => (deleteTarget.value = { id, name: folder.name }) }],
+    [{ label: 'Eliminar carpeta', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => deleteFolder(folder) }],
   ]
 }
 provide<TreeContext>('workspace-tree', { folders, documents, activeId, canWrite, isExpanded, toggle, folderMenu })
@@ -96,19 +102,5 @@ provide<TreeContext>('workspace-tree', { folders, documents, activeId, canWrite,
       :initial="dialog.initial"
       @submit="onDialogSubmit"
     />
-
-    <UModal
-      :open="!!deleteTarget"
-      :title="`¿Eliminar la carpeta «${deleteTarget?.name ?? ''}»?`"
-      description="No se borra ninguna nota: lo que contiene pasa a la carpeta superior."
-      @update:open="(o) => !o && (deleteTarget = null)"
-    >
-      <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton label="Cancelar" color="neutral" variant="ghost" @click="deleteTarget = null" />
-          <UButton label="Eliminar carpeta" color="error" icon="i-lucide-trash-2" @click="confirmDelete" />
-        </div>
-      </template>
-    </UModal>
   </div>
 </template>

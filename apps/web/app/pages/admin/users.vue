@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
+import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
+import { createUserInput, resetPasswordInput, type CreateUserInput } from '@wick/core/auth/schemas'
 
 definePageMeta({ admin: true })
 useHead({ title: 'Usuarios' })
@@ -47,16 +48,17 @@ function openCreate() {
   createOpen.value = true
 }
 
-async function submitCreate() {
+async function submitCreate(event: FormSubmitEvent<CreateUserInput>) {
+  const data = event.data
   createError.value = ''
   creating.value = true
   try {
-    await $fetch('/api/users', { method: 'POST', body: { ...newUser } })
+    await $fetch('/api/users', { method: 'POST', body: data })
     createOpen.value = false
     await refresh()
     toast.add({
-      title: `Cuenta de ${newUser.name} creada`,
-      description: `Comparte con esa persona su usuario (${newUser.username.trim().toLowerCase()}) y la contraseña inicial.`,
+      title: `Cuenta de ${data.name} creada`,
+      description: `Comparte con esa persona su usuario (${data.username}) y la contraseña inicial.`,
       color: 'success',
       icon: 'i-lucide-user-plus',
     })
@@ -69,7 +71,7 @@ async function submitCreate() {
 
 // --- Restablecer contraseña ---
 const resetTarget = ref<UserRow | null>(null)
-const resetPassword = ref('')
+const resetState = reactive({ password: '' })
 const resetError = ref('')
 const resetting = ref(false)
 
@@ -79,7 +81,7 @@ async function submitReset() {
   resetting.value = true
   try {
     const url: string = `/api/users/${resetTarget.value.id}/password`
-    await $fetch(url, { method: 'POST', body: { password: resetPassword.value } })
+    await $fetch(url, { method: 'POST', body: { password: resetState.password } })
     toast.add({
       title: 'Contraseña restablecida',
       description: `Se han cerrado las sesiones abiertas de ${resetTarget.value.name}.`,
@@ -107,7 +109,7 @@ function actions(u: UserRow): DropdownMenuItem[][] {
         icon: 'i-lucide-key-round',
         onSelect: () => {
           resetTarget.value = u
-          resetPassword.value = ''
+          resetState.password = ''
           resetError.value = ''
         },
       },
@@ -149,13 +151,18 @@ function actions(u: UserRow): DropdownMenuItem[][] {
         <UCard :ui="{ body: 'p-0 sm:p-0' }">
           <ul class="divide-y divide-default">
             <li v-for="u in users" :key="u.id" class="flex items-center gap-3 px-4 py-3">
-              <UserAvatar :user="u" :class="{ 'opacity-40': u.disabled }" />
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium" :class="u.disabled ? 'text-dimmed line-through' : 'text-highlighted'">
-                  {{ u.name }}
-                </p>
-                <p class="truncate text-sm text-muted">@{{ u.username }}</p>
-              </div>
+              <UUser
+                :name="u.name"
+                :description="`@${u.username}`"
+                :avatar="userAvatar(u)"
+                class="min-w-0 flex-1"
+                :ui="{
+                  avatar: u.disabled ? 'opacity-40' : '',
+                  wrapper: 'min-w-0',
+                  name: ['truncate', u.disabled && 'text-dimmed line-through'],
+                  description: 'truncate',
+                }"
+              />
               <div class="hidden flex-wrap justify-end gap-1 sm:flex">
                 <UBadge v-if="u.id === me?.id" color="neutral" variant="subtle" label="Tú" />
                 <UBadge v-if="u.role === 'ADMIN'" color="primary" variant="subtle" label="Administrador" />
@@ -174,9 +181,14 @@ function actions(u: UserRow): DropdownMenuItem[][] {
     </template>
   </UDashboardPanel>
 
-  <UModal v-model:open="createOpen" title="Nuevo usuario" description="La persona podrá cambiar su contraseña al entrar.">
+  <UModal
+    v-model:open="createOpen"
+    title="Nuevo usuario"
+    description="La persona podrá cambiar su contraseña al entrar."
+    :ui="{ footer: 'justify-end' }"
+  >
     <template #body>
-      <form id="create-user" class="space-y-4" @submit.prevent="submitCreate">
+      <UForm id="create-user" :schema="createUserInput" :state="newUser" class="space-y-4" @submit="submitCreate">
         <UAlert v-if="createError" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="createError" />
         <UFormField label="Nombre" name="name">
           <UInput v-model="newUser.name" required autofocus class="w-full" />
@@ -190,13 +202,11 @@ function actions(u: UserRow): DropdownMenuItem[][] {
         <UFormField label="Rol" name="role">
           <USelect v-model="newUser.role" :items="roleItems" class="w-full" />
         </UFormField>
-      </form>
+      </UForm>
     </template>
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="createOpen = false" />
-        <UButton type="submit" form="create-user" label="Crear cuenta" :loading="creating" />
-      </div>
+    <template #footer="{ close }">
+      <UButton label="Cancelar" color="neutral" variant="ghost" @click="close" />
+      <UButton type="submit" form="create-user" label="Crear cuenta" :loading="creating" />
     </template>
   </UModal>
 
@@ -204,21 +214,20 @@ function actions(u: UserRow): DropdownMenuItem[][] {
     :open="!!resetTarget"
     :title="`Restablecer la contraseña de ${resetTarget?.name ?? ''}`"
     description="Se cerrarán todas sus sesiones abiertas."
+    :ui="{ footer: 'justify-end' }"
     @update:open="(open) => !open && (resetTarget = null)"
   >
     <template #body>
-      <form id="reset-password" class="space-y-4" @submit.prevent="submitReset">
+      <UForm id="reset-password" :schema="resetPasswordInput" :state="resetState" class="space-y-4" @submit="submitReset">
         <UAlert v-if="resetError" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="resetError" />
         <UFormField label="Contraseña nueva" name="password" help="Al menos 10 caracteres.">
-          <UInput v-model="resetPassword" type="password" autocomplete="new-password" required autofocus class="w-full" />
+          <UInput v-model="resetState.password" type="password" autocomplete="new-password" required autofocus class="w-full" />
         </UFormField>
-      </form>
+      </UForm>
     </template>
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="resetTarget = null" />
-        <UButton type="submit" form="reset-password" label="Restablecer" :loading="resetting" />
-      </div>
+    <template #footer="{ close }">
+      <UButton label="Cancelar" color="neutral" variant="ghost" @click="close" />
+      <UButton type="submit" form="reset-password" label="Restablecer" :loading="resetting" />
     </template>
   </UModal>
 </template>

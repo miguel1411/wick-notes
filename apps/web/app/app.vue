@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { es } from '@nuxt/ui/locale'
+
 useHead({
   htmlAttrs: { lang: 'es' },
   titleTemplate: (title) => (title ? `${title} · wick notes` : 'wick notes'),
@@ -7,7 +9,8 @@ useHead({
 </script>
 
 <template>
-  <UApp :toaster="{ position: 'bottom-right' }">
+  <!-- Textos propios de Nuxt UI (cerrar, sin resultados, plegar barra…) en español. -->
+  <UApp :locale="es" :toaster="{ position: 'bottom-right' }">
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

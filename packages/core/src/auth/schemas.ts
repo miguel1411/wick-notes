@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+// Este archivo solo depende de zod: la web lo importa también en el navegador
+// (`@wick/core/auth/schemas`) para validar los formularios con las mismas reglas.
+
 export const usernameSchema = z
   .string()
   .trim()
@@ -54,6 +57,14 @@ export const changeOwnPasswordInput = z.object({
   currentPassword: z.string().max(256),
   newPassword: passwordSchema,
 })
+
+export const createApiTokenInput = z.object({
+  name: z.string().trim().min(1, 'Ponle un nombre al token').max(80, 'El nombre no puede superar 80 caracteres'),
+  scope: z.enum(['read', 'write']).default('read'),
+  /** null o ausente = no caduca. */
+  expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+})
+export type CreateApiTokenInput = z.input<typeof createApiTokenInput>
 
 export type LoginInput = z.input<typeof loginInput>
 export type SetupInput = z.input<typeof setupInput>

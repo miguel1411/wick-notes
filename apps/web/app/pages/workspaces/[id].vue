@@ -12,6 +12,7 @@ interface Person {
 const route = useRoute()
 const id = computed(() => String(route.params.id))
 const toast = useToast()
+const confirm = useConfirmDialog()
 const { user: me } = useAuth()
 const { workspaces, refresh: refreshWorkspaces, select } = useWorkspaces()
 const { run } = useDocuments()
@@ -77,11 +78,17 @@ async function removeMember(m: Member) {
 }
 
 // --- Borrar ---
-const confirmDelete = ref(false)
 async function deleteWs() {
+  const confirmed = await confirm({
+    title: `¿Borrar «${ws.value?.name ?? ''}»?`,
+    description: 'Se borran también sus carpetas (vacías).',
+    confirmLabel: 'Borrar',
+    confirmIcon: 'i-lucide-trash-2',
+    color: 'error',
+  })
+  if (!confirmed) return
   const url: string = `/api/workspaces/${id.value}`
   const ok = await run(() => $fetch<null>(url, { method: 'DELETE' }).then(() => true), 'No se pudo borrar el espacio')
-  confirmDelete.value = false
   if (!ok) return
   await refreshWorkspaces()
   if (workspaces.value[0]) select(workspaces.value[0].id)
@@ -150,11 +157,17 @@ async function deleteWs() {
           </template>
           <ul class="divide-y divide-default">
             <li v-for="m in members" :key="m.user.id" class="flex items-center gap-3 px-4 py-3">
-              <UserAvatar :user="m.user" :class="{ 'opacity-40': m.user.disabled }" />
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium text-highlighted">{{ m.user.name }}<span v-if="m.user.id === me?.id" class="text-muted"> (tú)</span></p>
-                <p class="truncate text-sm text-muted">@{{ m.user.username }}</p>
-              </div>
+              <UUser
+                :name="m.user.name"
+                :description="`@${m.user.username}`"
+                :avatar="userAvatar(m.user)"
+                class="min-w-0 flex-1"
+                :ui="{ avatar: m.user.disabled ? 'opacity-40' : '', wrapper: 'min-w-0', name: 'truncate', description: 'truncate' }"
+              >
+                <template #name>
+                  {{ m.user.name }}<span v-if="m.user.id === me?.id" class="text-muted"> (tú)</span>
+                </template>
+              </UUser>
               <USelect
                 v-if="canManage"
                 :model-value="m.role"
@@ -207,20 +220,11 @@ async function deleteWs() {
               variant="outline"
               icon="i-lucide-trash-2"
               :disabled="ws.documentCount > 0"
-              @click="confirmDelete = true"
+              @click="deleteWs"
             />
           </div>
         </UCard>
       </div>
     </template>
   </UDashboardPanel>
-
-  <UModal v-model:open="confirmDelete" :title="`¿Borrar «${ws?.name ?? ''}»?`" description="Se borran también sus carpetas (vacías).">
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="confirmDelete = false" />
-        <UButton label="Borrar" color="error" icon="i-lucide-trash-2" @click="deleteWs" />
-      </div>
-    </template>
-  </UModal>
 </template>

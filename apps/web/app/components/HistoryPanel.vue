@@ -13,6 +13,7 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ restored: [] }>()
 
 const toast = useToast()
+const confirm = useConfirmDialog()
 const { handleUnauthorized } = useAuth()
 
 const versions = ref<Version[]>([])
@@ -21,8 +22,6 @@ const selected = ref<Version | null>(null)
 const preview = ref('')
 const previewLoading = ref(false)
 const saving = ref(false)
-const confirmRestore = ref(false)
-const restoring = ref(false)
 
 const base = computed(() => `/api/documents/${props.documentId}/versions`)
 
@@ -83,26 +82,32 @@ async function saveNow() {
   }
 }
 
-async function restore() {
-  if (!selected.value) return
-  restoring.value = true
-  try {
-    const url: string = `${base.value}/${selected.value.id}/restore`
-    await $fetch(url, { method: 'POST' })
-    toast.add({
-      title: 'Versión restaurada',
-      description: 'La versión anterior se guardó en el historial por si necesitas volver.',
-      color: 'success',
-      icon: 'i-lucide-history',
-    })
-    confirmRestore.value = false
-    open.value = false
-    emit('restored')
-  } catch (err) {
-    await handle(err, 'No se pudo restaurar')
-  } finally {
-    restoring.value = false
-  }
+async function restore(v: Version) {
+  const restored = await confirm({
+    title: '¿Restaurar esta versión?',
+    description:
+      'El contenido y el título volverán a como estaban. Lo actual se guarda antes en el historial, así que no se pierde nada. Quien tenga la nota abierta verá el cambio al momento.',
+    confirmLabel: 'Restaurar',
+    confirmIcon: 'i-lucide-history',
+    action: async () => {
+      try {
+        const url: string = `${base.value}/${v.id}/restore`
+        await $fetch(url, { method: 'POST' })
+      } catch (err) {
+        await handle(err, 'No se pudo restaurar')
+        return false
+      }
+    },
+  })
+  if (!restored) return
+  toast.add({
+    title: 'Versión restaurada',
+    description: 'La versión anterior se guardó en el historial por si necesitas volver.',
+    color: 'success',
+    icon: 'i-lucide-history',
+  })
+  open.value = false
+  emit('restored')
 }
 
 watch(open, (isOpen) => {
@@ -171,7 +176,7 @@ watch(open, (isOpen) => {
                   {{ selected.author ? `${REASONS[selected.reason].who} ${selected.author.name}` : REASONS[selected.reason].label }}
                 </p>
               </div>
-              <UButton v-if="canEdit" icon="i-lucide-history" label="Restaurar esta versión" size="sm" @click="confirmRestore = true" />
+              <UButton v-if="canEdit" icon="i-lucide-history" label="Restaurar esta versión" size="sm" @click="restore(selected)" />
             </div>
             <div class="min-h-0 flex-1 overflow-auto p-3">
               <USkeleton v-if="previewLoading" class="h-24 w-full" />
@@ -182,17 +187,4 @@ watch(open, (isOpen) => {
       </div>
     </template>
   </USlideover>
-
-  <UModal
-    v-model:open="confirmRestore"
-    title="¿Restaurar esta versión?"
-    description="El contenido y el título volverán a como estaban. Lo actual se guarda antes en el historial, así que no se pierde nada. Quien tenga la nota abierta verá el cambio al momento."
-  >
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="confirmRestore = false" />
-        <UButton label="Restaurar" icon="i-lucide-history" :loading="restoring" @click="restore" />
-      </div>
-    </template>
-  </UModal>
 </template>

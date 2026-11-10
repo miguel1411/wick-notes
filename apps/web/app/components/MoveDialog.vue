@@ -56,7 +56,12 @@ const unchanged = computed(() => targetWs.value === props.workspaceId && folderO
 </script>
 
 <template>
-  <UModal v-model:open="open" :title="`Mover «${title}»`" description="Quien no tenga acceso al espacio de destino dejará de ver la nota.">
+  <UModal
+    v-model:open="open"
+    :title="`Mover «${title}»`"
+    description="Quien no tenga acceso al espacio de destino dejará de ver la nota."
+    :ui="{ footer: 'justify-end' }"
+  >
     <template #body>
       <div class="space-y-4">
         <UFormField label="Espacio de trabajo">
@@ -67,16 +72,14 @@ const unchanged = computed(() => targetWs.value === props.workspaceId && folderO
         </UFormField>
       </div>
     </template>
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton label="Cancelar" color="neutral" variant="ghost" @click="open = false" />
-        <UButton
-          label="Mover"
-          icon="i-lucide-folder-input"
-          :disabled="unchanged"
-          @click="emit('move', { workspaceId: targetWs, folderId: folderOrNull(targetFolder) })"
-        />
-      </div>
+    <template #footer="{ close }">
+      <UButton label="Cancelar" color="neutral" variant="ghost" @click="close" />
+      <UButton
+        label="Mover"
+        icon="i-lucide-folder-input"
+        :disabled="unchanged"
+        @click="emit('move', { workspaceId: targetWs, folderId: folderOrNull(targetFolder) })"
+      />
     </template>
   </UModal>
 </template>
