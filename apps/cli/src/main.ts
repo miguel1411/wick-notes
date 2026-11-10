@@ -24,7 +24,7 @@ Uso:
                                               (claude mcp add wick -- wick mcp)
 
   wick notes list [--limit N]                 Notas, de la más reciente a la más antigua
-  wick notes search <texto>                   Busca notas por título
+  wick notes search <texto>                   Busca en títulos y contenido (todas las palabras)
   wick notes get <nota> [--body]              Muestra una nota en Markdown
   wick notes create "Título" [texto…]         Crea una nota (contenido opcional: texto, -f fichero, -f - stdin)
   wick notes edit <nota> [--force]            Edita una nota con tu editor ($VISUAL / $EDITOR)

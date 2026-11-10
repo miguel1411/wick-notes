@@ -45,9 +45,19 @@ export async function list(ctx: Context, flags: { json?: boolean; limit?: string
   printList(ctx, notes, !!flags.json)
 }
 
-export async function search(ctx: Context, query: string | undefined, flags: { json?: boolean }) {
+/** Busca en título y contenido; muestra un fragmento de cada resultado. */
+export async function search(ctx: Context, query: string | undefined, flags: { json?: boolean; limit?: string }) {
   if (!query?.trim()) throw new UsageError('Uso: wick notes search <texto>')
-  printList(ctx, await ctx.api().list(query), !!flags.json)
+  const { io } = ctx
+  const results = await ctx.api().search(query, Number(flags.limit) || 20)
+  if (flags.json) return io.stdout(JSON.stringify(results, null, 2) + '\n')
+  if (!results.length) return io.stderr(`Ninguna nota contiene «${query}».\n`)
+  const c = colors(io)
+  const width = Math.max(40, io.columns)
+  for (const r of results) {
+    io.stdout(`${c.dim(r.id)}  ${c.bold(truncate(r.title, width - 27))}  ${c.dim(relativeTime(r.updatedAt))}\n`)
+    if (r.snippet) io.stdout(`  ${c.dim(truncate(r.snippet, width - 2))}\n`)
+  }
 }
 
 // ---------------------------------------------------------------- get / export

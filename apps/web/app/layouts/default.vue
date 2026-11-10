@@ -81,6 +81,8 @@ const items = computed<NavigationMenuItem[]>(() =>
           />
         </div>
 
+        <UDashboardSearchButton :collapsed="collapsed" label="Buscar" class="mt-1 bg-transparent ring-default" />
+
         <p v-if="!collapsed" class="px-2.5 pt-3 text-xs font-medium text-muted">Recientes</p>
         <UNavigationMenu
           v-if="items.length"
@@ -111,5 +113,7 @@ const items = computed<NavigationMenuItem[]>(() =>
     </UDashboardSidebar>
 
     <slot />
+
+    <NoteSearch />
   </UDashboardGroup>
 </template>

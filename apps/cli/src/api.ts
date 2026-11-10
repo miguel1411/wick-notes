@@ -11,6 +11,11 @@ export interface NoteSummary {
   createdBy: { id: string; name: string } | null
 }
 
+export interface SearchResult extends NoteSummary {
+  snippet: string
+  titleMatch: boolean
+}
+
 export interface Me {
   id: string
   username: string
@@ -84,6 +89,10 @@ export class WickApi {
   list(query?: string): Promise<NoteSummary[]> {
     const qs = query ? `?q=${encodeURIComponent(query)}` : ''
     return this.json('GET', `/api/documents${qs}`)
+  }
+
+  search(query: string, limit = 20): Promise<SearchResult[]> {
+    return this.json('GET', `/api/documents/search?q=${encodeURIComponent(query)}&limit=${limit}`)
   }
 
   get(id: string): Promise<NoteSummary> {

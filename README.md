@@ -6,8 +6,8 @@ Base de conocimiento en Markdown, autoalojada y colaborativa. La visión complet
 está en [PRODUCT.md](PRODUCT.md).
 
 > **Estado:** en desarrollo. Ya hay usuarios con inicio de sesión, y se pueden
-> crear, renombrar, eliminar, importar y exportar (Markdown) notas y editarlas
-> entre varias personas en tiempo real, con guardado automático. Todas las personas con cuenta ven y editan todas
+> crear, buscar, renombrar, eliminar, importar y exportar (Markdown) notas y
+> editarlas entre varias personas en tiempo real, con guardado automático. Todas las personas con cuenta ven y editan todas
 > las notas (los espacios de trabajo y permisos por nota llegarán después).
 
 ## Instalación (Docker Compose)
@@ -143,6 +143,18 @@ packages/
   markdown/  Conversión Markdown ↔ Yjs con el mismo editor que la web (en un hilo aparte)
 ```
 
+### Búsqueda
+
+Botón **Buscar** de la barra lateral o `Ctrl+K` / `⌘K`. Busca en títulos y
+contenido; aparecen las notas que contienen **todas** las palabras, sin
+distinguir mayúsculas, tildes ni guiones («wifi» encuentra «Wi-Fi»). Primero las
+que coinciden en el título, y cada resultado muestra un fragmento.
+
+El índice se actualiza cada vez que se guarda una nota (pocos segundos después
+de escribir). Las notas anteriores a la búsqueda se indexan solas al arrancar
+el servidor de colaboración. Está pensado para equipos pequeños (miles de
+notas) y no necesita extensiones de PostgreSQL.
+
 ### Tokens de API
 
 Para usar wick notes desde la terminal, agentes de IA o scripts, crea un token
@@ -171,7 +183,7 @@ wick login --server http://servidor:3120 --token wick_…   # token de Mi cuenta
 
 ```bash
 wick notes list                         # recientes primero (--json para scripts)
-wick notes search postgres              # por título
+wick notes search postgres réplica      # en títulos y contenido, con fragmento
 wick notes get "red de casa"            # por id, principio del id o título
 wick notes create "Nueva nota" "texto"  # o -f nota.md, o -f - para leer de stdin
 wick notes edit backups                 # abre $VISUAL/$EDITOR; avisa si alguien la cambió mientras tanto
@@ -200,7 +212,7 @@ claude mcp add wick -- wick mcp
 | Herramienta     | Qué hace                                               | Token  |
 |-----------------|--------------------------------------------------------|--------|
 | `notes_list`    | Lista notas recientes                                  | lectura |
-| `notes_search`  | Busca por título                                       | lectura |
+| `notes_search`  | Busca en títulos y contenido, con fragmentos           | lectura |
 | `notes_read`    | Lee una nota (por id o título) en Markdown             | lectura |
 | `notes_create`  | Crea una nota                                          | escritura |
 | `notes_append`  | Añade al final de una nota                             | escritura |
@@ -257,6 +269,7 @@ navegador deben venir del mismo origen.
 | `GET`    | `/api/documents/:id`   | Metadatos de una nota                |
 | `PATCH`  | `/api/documents/:id`   | Renombra (`{ "title": string }`)     |
 | `DELETE` | `/api/documents/:id`   | Elimina                              |
+| `GET`    | `/api/documents/search` | Búsqueda en título y contenido (`?q=`, `?limit=`) con fragmentos |
 | `GET`    | `/api/documents/:id/markdown` | Contenido en Markdown (`?download=1`: fichero con `# Título`) |
 | `PUT`    | `/api/documents/:id/markdown` | `{ markdown, mode: "replace" \| "append" }` |
 | `POST`   | `/api/documents/import` | Nota nueva desde `{ markdown, title?, filename? }` |

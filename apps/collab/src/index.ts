@@ -1,3 +1,4 @@
+import { reindexMissingDocuments } from '@wick/core'
 import { disconnectPrisma } from '@wick/db'
 import { createCollabServer } from './server'
 
@@ -26,3 +27,8 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const) {
 
 await server.listen()
 console.log(`[collab] escuchando en ws://${address}:${port}`)
+
+// Notas creadas antes de existir la búsqueda: se indexan en segundo plano.
+reindexMissingDocuments()
+  .then((n) => n && console.log(`[collab] índice de búsqueda: ${n} notas actualizadas`))
+  .catch((err) => console.error('[collab] error al reindexar', err))

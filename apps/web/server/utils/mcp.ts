@@ -3,6 +3,7 @@ import {
   createDocument,
   listDocuments,
   renameDocument,
+  searchDocuments,
   WickError,
   type AuthUser,
   type DocumentSummary,
@@ -74,13 +75,18 @@ export function createWickMcpServer(opts: { user: AuthUser; scope: TokenScope; o
     'notes_search',
     {
       title: 'Buscar notas',
-      description: 'Busca notas cuyo título contenga el texto indicado (sin distinguir mayúsculas).',
-      inputSchema: { query: z.string().min(1).describe('Texto a buscar') },
+      description:
+        'Busca en el título y el contenido de las notas. Devuelve las que contienen todas las palabras (sin distinguir mayúsculas ni tildes), con un fragmento de contexto.',
+      inputSchema: {
+        query: z.string().min(1).describe('Palabras a buscar'),
+        limit: z.number().int().min(1).max(50).optional().describe('Máximo de resultados (por defecto 10)'),
+      },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    safe(async ({ query }) => {
-      const docs = await listDocuments(user, { query, limit: 50 })
-      return text(docs.length ? docs.map(line).join('\n') : `Ninguna nota coincide con «${query}».`)
+    safe(async ({ query, limit }) => {
+      const results = await searchDocuments(user, query, { limit: limit ?? 10 })
+      if (!results.length) return text(`Ninguna nota contiene «${query}».`)
+      return text(results.map((r) => `${line(r)}${r.snippet ? `\n  > ${r.snippet}` : ''}`).join('\n'))
     }),
   )
 

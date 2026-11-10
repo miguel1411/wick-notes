@@ -53,6 +53,11 @@ function startServer() {
       const q = url.searchParams.get('q')?.toLowerCase()
       return send(200, notes.filter((n) => !q || n.title.toLowerCase().includes(q)).map(summary))
     }
+    if (p === '/api/documents/search') {
+      const terms = url.searchParams.get('q')!.toLowerCase().split(/\s+/)
+      const hits = notes.filter((n) => terms.every((t) => `${n.title} ${n.body}`.toLowerCase().includes(t)))
+      return send(200, hits.map((n) => ({ ...summary(n), snippet: n.body.slice(0, 40), titleMatch: false })))
+    }
     if (p === '/api/documents' && req.method === 'POST') return send(201, summary(addNote(json.title)))
     if (p === '/api/documents/import') {
       const lines = String(json.markdown).split('\n')
@@ -182,6 +187,11 @@ describe('wick notes', () => {
     const found = await wick(['search', 'postgres'], { env: loggedIn })
     expect(found.out).toContain('Backups de PostgreSQL')
     expect(found.out).not.toContain('Red de casa')
+
+    notes[1]!.body = 'El router está en la entrada'
+    const inBody = await wick(['search', 'router entrada'], { env: loggedIn })
+    expect(inBody.out).toContain('Red de casa')
+    expect(inBody.out).toContain('El router está en la entrada')
 
     const json = JSON.parse((await wick(['list', '--json', '-n', '1'], { env: loggedIn })).out)
     expect(json).toHaveLength(1)

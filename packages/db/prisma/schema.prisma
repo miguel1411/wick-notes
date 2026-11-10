@@ -71,6 +71,12 @@ model Document {
   title       String
   /// Estado Yjs codificado (Y.encodeStateAsUpdate). Fuente de verdad del contenido.
   yjsState    Bytes?
+  /// Texto plano del contenido (derivado de yjsState), para mostrar fragmentos.
+  contentText   String @default("")
+  /// contentText en minúsculas y sin tildes: es lo que se compara al buscar.
+  contentSearch String @default("")
+  /// Título en minúsculas y sin tildes.
+  titleSearch   String @default("")
   createdById String?
   createdBy   User?    @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())

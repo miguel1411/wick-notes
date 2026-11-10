@@ -1,6 +1,7 @@
 import { getPrisma, Prisma } from '@wick/db'
 import { requireActor, type AuthUser } from './auth/actor'
 import { NotFoundError } from './errors'
+import { contentIndex, normalizeForSearch } from './search'
 import {
   createDocumentInput,
   DEFAULT_TITLE,
@@ -67,8 +68,9 @@ export async function createDocument(
   return getPrisma().document.create({
     data: {
       title: data.title ?? DEFAULT_TITLE,
+      titleSearch: normalizeForSearch(data.title ?? DEFAULT_TITLE),
       createdById: actor.id,
-      ...(initialState ? { yjsState: new Uint8Array(initialState) } : {}),
+      ...(initialState ? { yjsState: new Uint8Array(initialState), ...contentIndex(initialState) } : {}),
     },
     select: summarySelect,
   })
@@ -102,7 +104,7 @@ export async function renameDocument(
   try {
     return await getPrisma().document.update({
       where: { id: parse(documentIdSchema, id) },
-      data: { title: data.title },
+      data: { title: data.title, titleSearch: normalizeForSearch(data.title) },
       select: summarySelect,
     })
   } catch (err) {
@@ -134,12 +136,15 @@ export async function loadYjsState(id: string): Promise<Uint8Array | null> {
   return doc.yjsState ? new Uint8Array(doc.yjsState) : null
 }
 
-/** Guarda el estado Yjs. Igual que loadYjsState, la autorización es de la conexión. */
+/**
+ * Guarda el estado Yjs y actualiza el índice de búsqueda del contenido.
+ * Igual que loadYjsState, la autorización es de la conexión.
+ */
 export async function saveYjsState(id: string, state: Uint8Array): Promise<void> {
   try {
     await getPrisma().document.update({
       where: { id: parse(documentIdSchema, id) },
-      data: { yjsState: new Uint8Array(state) },
+      data: { yjsState: new Uint8Array(state), ...contentIndex(state) },
     })
   } catch (err) {
     if (isNotFound(err)) throw new NotFoundError('Documento')
