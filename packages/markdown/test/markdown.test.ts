@@ -162,6 +162,23 @@ describe('conversión Markdown ↔ Yjs', () => {
     expect(md).toContain('entre   palabras se respeta')
   })
 
+  it('no deja <br /> por líneas en blanco', async () => {
+    const state = (texts: (string | null)[]) => {
+      const d = new Y.Doc()
+      for (const t of texts) {
+        const el = new Y.XmlElement('paragraph')
+        if (t !== null) el.insert(0, [new Y.XmlText(t)])
+        d.getXmlFragment('prosemirror').push([el])
+      }
+      return Y.encodeStateAsUpdate(d)
+    }
+    expect(await converter.toMarkdown(state(['Antes', null, null, '   ', 'Después', null]))).toBe('Antes\n\nDespués\n')
+    expect(await converter.toMarkdown(state([null, '  ']))).toBe('')
+    // En listas y citas tampoco quedan restos.
+    const md = await converter.toMarkdown(await converter.fromMarkdown('* uno\n\n  <br />\n* dos\n\n> cita'))
+    expect(md).not.toContain('<br />')
+  })
+
   it('respeta los espacios dentro de código', async () => {
     // (`` ` x ` `` sería «x» según CommonMark; con espacios a un solo lado se conservan.)
     const md = await converter.toMarkdown(await converter.fromMarkdown('```\n  sangrado\n```\n\n`  x` al inicio'))

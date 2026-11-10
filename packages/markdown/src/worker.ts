@@ -110,9 +110,40 @@ function trimLineWhitespace(doc: Node): Node {
   return tr.doc as Node
 }
 
+/**
+ * Quita los párrafos vacíos (líneas en blanco o solo con espacios). El
+ * serializador los escribiría como `<br />` para conservar el hueco. Si un
+ * contenedor (lista, cita…) solo tiene párrafos vacíos, se conserva uno, porque
+ * el esquema exige al menos un bloque.
+ */
+function dropEmptyParagraphs(doc: Node): Node {
+  const ranges: [number, number][] = []
+  const isEmpty = (n: Node) => n.type.name === 'paragraph' && n.content.size === 0
+
+  const visit = (parent: Node, contentStart: number) => {
+    const empties: [number, number][] = []
+    parent.forEach((child, offset) => {
+      const from = contentStart + offset
+      if (isEmpty(child)) empties.push([from, from + child.nodeSize])
+      else if (!child.isTextblock && !child.isLeaf) visit(child, from + 1)
+    })
+    // Si todos los hijos están vacíos, se deja el primero.
+    ranges.push(...(empties.length === parent.childCount ? empties.slice(1) : empties))
+  }
+  visit(doc, 0)
+
+  if (!ranges.length) return doc
+  const tr = new Transform(doc)
+  for (const [from, to] of ranges.sort((a, b) => b[0] - a[0])) tr.delete(from, to)
+  return tr.doc as Node
+}
+
 function toMarkdown(state: Uint8Array | null): string {
   const node = docToNode(loadDoc(state))
-  return node ? serializer(trimLineWhitespace(node)) : ''
+  if (!node) return ''
+  const markdown = serializer(dropEmptyParagraphs(trimLineWhitespace(node)))
+  // Un documento sin nada más que líneas en blanco queda vacío.
+  return markdown.trim() === '<br />' ? '' : markdown
 }
 
 /** Estado completo de un documento nuevo con este Markdown. */
