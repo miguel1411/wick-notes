@@ -15,12 +15,7 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, REVISION_HEADER, revision)
 
   if (getQuery(event).download) {
-    const filename = markdownFilename(doc.title)
-    setResponseHeader(
-      event,
-      'Content-Disposition',
-      `attachment; filename="${filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    )
+    setAttachment(event, markdownFilename(doc.title))
     return withTitleHeading(doc.title, body)
   }
   return body

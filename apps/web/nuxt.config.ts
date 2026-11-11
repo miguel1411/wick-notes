@@ -15,6 +15,8 @@ export default defineNuxtConfig({
     // URL interna del servidor de colaboración (Docker: http://collab:1234).
     // Vacía en desarrollo: se usa DEV_HOST/127.0.0.1 y COLLAB_PORT.
     collabInternalUrl: '',
+    // Tamaño de página de los PDF exportados: 'a4' o 'us-letter' (carta).
+    pdfPaper: 'a4',
     public: {
       // URL del WebSocket de colaboración. Vacía = mismo host que la web en collabPort.
       collabUrl: '',

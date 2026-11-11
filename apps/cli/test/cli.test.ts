@@ -17,6 +17,8 @@ interface Note {
 }
 
 const TOKEN = 'wick_' + 'a'.repeat(43)
+/** Bytes que no son UTF-8 válido: comprueban que el PDF se guarda sin convertirlo a texto. */
+const FAKE_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00, 0xe2, 0x0a])
 let notes: Note[] = []
 let seq = 0
 let server: Server
@@ -101,6 +103,15 @@ function startServer() {
       if (m[3] === 'markdown') return send(200, `contenido de ${m[2]}`)
       n.body = `restaurada ${m[2]}`
       return send(204)
+    }
+    if ((m = p.match(/^\/api\/documents\/([^/]+)\/pdf$/))) {
+      const n = find(m[1]!)
+      if (!n) return send(404, { message: 'Documento no encontrado' })
+      res.writeHead(200, {
+        'content-type': 'application/pdf',
+        'content-disposition': `attachment; filename="pdf"; filename*=UTF-8''${encodeURIComponent(`${n.title}.pdf`)}`,
+      })
+      return res.end(Buffer.concat([FAKE_PDF, Buffer.from(n.title)]))
     }
     if ((m = p.match(/^\/api\/documents\/([^/]+)\/markdown$/))) {
       const n = find(m[1]!)
@@ -314,6 +325,24 @@ describe('wick notes', () => {
     expect(all.out).toContain('3 notas exportadas')
     const files = (await readdir(dir)).filter((f) => f.endsWith('.md')).sort()
     expect(files).toEqual(['Otra.md', 'Red de casa (2).md', 'Red de casa.md'])
+  })
+
+  it('exporta en PDF una nota o todas', async () => {
+    addNote('Red de casa', 'Router')
+    addNote('Red de casa', 'Duplicada')
+    addNote('Otra', 'x')
+    const one = await wick(['export', 'Otra', '--pdf'], { env: loggedIn })
+    expect(one.out.trim()).toBe(join(dir, 'Otra.pdf'))
+    expect(await readFile(join(dir, 'Otra.pdf'))).toEqual(Buffer.concat([FAKE_PDF, Buffer.from('Otra')]))
+
+    const toStdout = await wick(['export', 'Otra', '--pdf', '-o', '-'], { env: loggedIn })
+    expect(toStdout.code).not.toBe(0)
+    expect(toStdout.err).toContain('-o')
+
+    const all = await wick(['export', '--all', '--pdf', '-o', '.'], { env: loggedIn })
+    expect(all.out).toContain('3 notas exportadas')
+    const files = (await readdir(dir)).filter((f) => f.endsWith('.pdf')).sort()
+    expect(files).toEqual(['Otra.pdf', 'Red de casa (2).pdf', 'Red de casa.pdf'])
   })
 
   it('importa ficheros', async () => {

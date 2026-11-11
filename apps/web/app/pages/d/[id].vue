@@ -93,6 +93,11 @@ const menu = computed<DropdownMenuItem[][]>(() => [
       // La respuesta es un adjunto: el navegador lo descarga sin salir de la página.
       onSelect: () => window.location.assign(`/api/documents/${id.value}/markdown?download=1`),
     },
+    {
+      label: 'Descargar PDF',
+      icon: 'i-lucide-file-text',
+      onSelect: () => window.location.assign(`/api/documents/${id.value}/pdf?download=1`),
+    },
     ...(canEdit.value ? [{ label: 'Mover a…', icon: 'i-lucide-folder-input', onSelect: () => (moveOpen.value = true) }] : []),
   ],
   ...(canEdit.value

@@ -36,6 +36,7 @@ Uso:
   wick notes rename <nota> "Nuevo título"     Cambia el título
   wick notes export <nota> [-o destino|-]     Guarda la nota como .md (o la imprime con -o -)
   wick notes export --all [-o carpeta]        Exporta todas las notas
+  wick notes export <nota> --pdf [-o destino] Guarda la nota como PDF (también con --all)
   wick notes import <fichero.md>…             Crea notas a partir de ficheros Markdown
   wick notes delete <nota> [--yes]            Elimina una nota
   wick notes history <nota> [versión]         Historial de versiones (o una versión en Markdown)
@@ -73,6 +74,7 @@ export async function run(argv: string[], io: IO): Promise<number> {
         file: { type: 'string', short: 'f' },
         output: { type: 'string', short: 'o' },
         all: { type: 'boolean' },
+        pdf: { type: 'boolean' },
         yes: { type: 'boolean', short: 'y' },
         force: { type: 'boolean' },
         workspace: { type: 'string', short: 'w' },

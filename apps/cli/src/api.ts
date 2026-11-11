@@ -53,6 +53,14 @@ export class ApiError extends CliError {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
+/** Nombre de fichero de una descarga (Content-Disposition), si lo hay. */
+function attachmentName(res: Response): string | null {
+  const disposition = res.headers.get('content-disposition') ?? ''
+  const star = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  const plain = disposition.match(/filename="([^"]+)"/i)
+  return star ? decodeURIComponent(star[1]!) : plain ? plain[1]! : null
+}
+
 /** Cliente mínimo de la API REST de wick notes, autenticado con un token. */
 export class WickApi {
   constructor(
@@ -137,11 +145,13 @@ export class WickApi {
    */
   async markdown(id: string, withTitle = false): Promise<{ text: string; filename: string | null; revision: string | null }> {
     const res = await this.send('GET', `/api/documents/${encodeURIComponent(id)}/markdown${withTitle ? '?download=1' : ''}`)
-    const disposition = res.headers.get('content-disposition') ?? ''
-    const star = disposition.match(/filename\*=UTF-8''([^;]+)/i)
-    const plain = disposition.match(/filename="([^"]+)"/i)
-    const filename = star ? decodeURIComponent(star[1]!) : plain ? plain[1]! : null
-    return { text: await res.text(), filename, revision: res.headers.get('x-wick-revision') }
+    return { text: await res.text(), filename: attachmentName(res), revision: res.headers.get('x-wick-revision') }
+  }
+
+  /** La nota en PDF (generado en el servidor) y su nombre de fichero. */
+  async pdf(id: string): Promise<{ bytes: Uint8Array; filename: string | null }> {
+    const res = await this.send('GET', `/api/documents/${encodeURIComponent(id)}/pdf?download=1`)
+    return { bytes: new Uint8Array(await res.arrayBuffer()), filename: attachmentName(res) }
   }
 
   create(title: string, workspaceId?: string): Promise<NoteSummary> {

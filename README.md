@@ -236,6 +236,7 @@ wick notes edit backups                 # abre $VISUAL/$EDITOR; lo que otros esc
 journalctl -n 50 | wick notes append "Incidencias" -f -
 wick notes replace red "DNS: 1.1.1.1" "DNS: 9.9.9.9"   # cambia un fragmento sin abrir el editor ("" lo borra)
 wick notes export --all -o ./copia      # un .md por nota, con `# Título`
+wick notes export backups --pdf         # la nota en PDF (también con --all)
 wick notes import *.md
 wick notes history backups              # versiones; con un id de versión, su contenido
 wick notes restore backups cmx1…        # lo actual queda en el historial
@@ -320,6 +321,11 @@ CLI y los agentes, carácter por carácter.
 
 - **Exportar:** menú «…» de la nota → *Descargar Markdown*. El fichero empieza
   por `# Título`.
+- **PDF:** menú «…» de la nota → *Descargar PDF* (o `GET /api/documents/:id/pdf`,
+  `wick notes export <nota> --pdf`). Lo genera el propio servidor con
+  [Typst](https://typst.app), sin navegador ni internet, y con sus fuentes
+  incluidas. Las imágenes quedan como enlace (no se descargan) y los emojis no
+  se ven. Tamaño de página: `NUXT_PDF_PAPER=a4` (por defecto) o `us-letter`.
 - **Importar:** botón junto a *Nueva nota* (admite varios `.md`). Si el fichero
   empieza por `# Algo`, eso pasa a ser el título; si no, el nombre del fichero.
 - **Escribir por la API** (`PUT /api/documents/:id/markdown`): se aplica sobre el

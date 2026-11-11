@@ -104,14 +104,26 @@ async function isDirectory(path: string) {
 /** Fichero de destino que no pise otro ya escrito en esta exportación. */
 function uniqueName(name: string, used: Set<string>): string {
   let candidate = name
-  for (let i = 2; used.has(candidate.toLowerCase()); i++) candidate = name.replace(/\.md$/, ` (${i}).md`)
+  for (let i = 2; used.has(candidate.toLowerCase()); i++) candidate = name.replace(/(\.(md|pdf))$/, ` (${i})$1`)
   used.add(candidate.toLowerCase())
   return candidate
 }
 
-export async function exportNotes(ctx: Context, ref: string | undefined, flags: { output?: string; all?: boolean }) {
+/** Fichero de una nota: Markdown (`# Título` + contenido) o PDF. */
+async function exportFile(ctx: Context, id: string, pdf: boolean): Promise<{ data: string | Uint8Array; filename: string }> {
+  const api = ctx.api()
+  if (pdf) {
+    const { bytes, filename } = await api.pdf(id)
+    return { data: bytes, filename: filename ?? `${id}.pdf` }
+  }
+  const { text, filename } = await api.markdown(id, true)
+  return { data: text, filename: filename ?? `${id}.md` }
+}
+
+export async function exportNotes(ctx: Context, ref: string | undefined, flags: { output?: string; all?: boolean; pdf?: boolean }) {
   const { io } = ctx
   const api = ctx.api()
+  const pdf = flags.pdf === true
 
   if (flags.all) {
     if (ref) throw new UsageError('Usa --all sin indicar ninguna nota')
@@ -120,23 +132,24 @@ export async function exportNotes(ctx: Context, ref: string | undefined, flags: 
     const notes = await api.list()
     const used = new Set<string>()
     for (const n of notes) {
-      const { text, filename } = await api.markdown(n.id, true)
-      const file = join(dir, uniqueName(filename ?? `${n.id}.md`, used))
-      await writeFile(file, text)
+      const { data, filename } = await exportFile(ctx, n.id, pdf)
+      const file = join(dir, uniqueName(filename, used))
+      await writeFile(file, data)
       io.stderr(`${file}\n`)
     }
     io.stdout(`${notes.length} notas exportadas a ${dir}\n`)
     return
   }
 
-  if (!ref) throw new UsageError('Uso: wick notes export <id|título> [-o fichero|carpeta|-]  ·  wick notes export --all [-o carpeta]')
+  if (!ref) throw new UsageError('Uso: wick notes export <id|título> [--pdf] [-o fichero|carpeta|-]  ·  wick notes export --all [--pdf] [-o carpeta]')
+  if (pdf && flags.output === '-') throw new UsageError('El PDF no se puede mostrar en la terminal: indica un fichero o carpeta con -o')
   const note = await resolveNote(api, ref)
-  const { text, filename } = await api.markdown(note.id, true)
-  if (flags.output === '-') return io.stdout(text)
+  const { data, filename } = await exportFile(ctx, note.id, pdf)
+  if (flags.output === '-') return io.stdout(data as string)
 
   let target = resolve(io.cwd, flags.output ?? '.')
-  if (await isDirectory(target)) target = join(target, filename ?? `${note.id}.md`)
-  await writeFile(target, text)
+  if (await isDirectory(target)) target = join(target, filename)
+  await writeFile(target, data)
   io.stdout(`${target}\n`)
 }
 
