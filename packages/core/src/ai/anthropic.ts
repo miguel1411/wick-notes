@@ -3,7 +3,7 @@
  *
  * - Lectura: visión + salida estructurada (JSON con esquema), effort «medium».
  * - Redacción: effort «high» y, si se permite, la búsqueda web del servidor de
- *   Anthropic (web_search_20260209), con un máximo de búsquedas.
+ *   Anthropic (la versión que admite el modelo), con un máximo de búsquedas.
  * - Respaldo ante rechazos de seguridad: `fallbacks: "default"` (beta
  *   server-side-fallback), que reintenta en otro modelo dentro de la misma llamada.
  * - Pensamiento: adaptativo (en claude-opus-5-5 siempre está activo).
@@ -38,6 +38,14 @@ const readingSchema = z.object({
   transcription: z.string(),
   keyTerms: z.array(z.string()),
 })
+
+/**
+ * La búsqueda web con filtrado dinámico (web_search_20260209) solo funciona bien
+ * en los modelos grandes; en el resto (Haiku, modelos antiguos) se usa la básica.
+ */
+export function webSearchToolType(model: string): 'web_search_20260209' | 'web_search_20250305' {
+  return /^claude-(fable|mythos|opus-5|opus-4-[678]|sonnet-5|sonnet-4-6)/.test(model) ? 'web_search_20260209' : 'web_search_20250305'
+}
 
 const zeroUsage = (): AiUsage => ({ inputTokens: 0, outputTokens: 0, webSearches: 0 })
 
@@ -153,7 +161,7 @@ export class AnthropicProvider implements AiProvider {
   async composeNote(input: ComposeInput): Promise<{ markdown: string; sources: Source[]; usage: AiUsage }> {
     const tools: BetaToolUnion[] =
       input.research && input.maxSearches > 0
-        ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: input.maxSearches }]
+        ? [{ type: webSearchToolType(this.model), name: 'web_search', max_uses: input.maxSearches }]
         : []
     const question: BetaMessageParam = { role: 'user', content: composeUserText(input) }
     const usage = zeroUsage()

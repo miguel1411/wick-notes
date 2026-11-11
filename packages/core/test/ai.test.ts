@@ -31,6 +31,7 @@ import {
   type ComposeInput,
   type PhotoReading,
 } from '../src'
+import { webSearchToolType } from '../src/ai/anthropic'
 import { makeUser, resetDatabase } from './helpers'
 
 const KEY = 'sk-ant-api03-clave-de-prueba-1234'
@@ -375,6 +376,16 @@ describe('nota desde foto', () => {
     expect(run).toMatchObject({ status: 'FAILED' })
     expect(run.error).toMatch(/^unavailable:/)
     expect(await getPrisma().document.count()).toBe(0)
+  })
+})
+
+describe('webSearchToolType', () => {
+  it('usa la búsqueda con filtrado dinámico solo en los modelos que la admiten', () => {
+    expect(webSearchToolType('claude-opus-5-5')).toBe('web_search_20260209')
+    expect(webSearchToolType('claude-sonnet-5-5')).toBe('web_search_20260209')
+    expect(webSearchToolType('claude-fable-5-2')).toBe('web_search_20260209')
+    expect(webSearchToolType('claude-haiku-5-5')).toBe('web_search_20250305')
+    expect(webSearchToolType('claude-haiku-4-5')).toBe('web_search_20250305')
   })
 })
 

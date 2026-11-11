@@ -179,6 +179,7 @@ const providerText = computed(() => {
     title="Nota desde foto"
     :description="phase === 'pick' ? `Fotos de apuntes escritos a mano (hasta ${maxPhotos}). La IA los transcribe y crea una nota en tu carpeta.` : undefined"
     :ui="{ footer: 'justify-end' }"
+    :content="{ onFocusOutside: (e: Event) => e.preventDefault() }"
   >
     <template #body>
       <!-- Elegir fotos -->

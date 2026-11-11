@@ -73,6 +73,7 @@ Diagramas (Mermaid), solo cuando de verdad ayuden a entender (un proceso, una ar
 - Pequeños y legibles: como mucho unos 12 elementos.
 - Sintaxis segura: identificadores simples (A, B, paso1) y todos los textos entre comillas dobles, por ejemplo A["Texto con acentos, (paréntesis) o símbolos"]. Para un salto de línea en un texto, <br/>. Sin estilos, classDef, click ni HTML.
 - Solo con información de la nota.
+- Si la transcripción describe un esquema de los apuntes (*[Esquema: …]*), conviértelo en un diagrama si se puede; si no, explícalo en una frase normal. No dejes la marca *[Esquema: …]* en la nota.
 
 No incluyas imágenes (![…](…)): si una fuente tiene una imagen útil, enlázala como texto.
 

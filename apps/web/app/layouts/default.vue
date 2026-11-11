@@ -9,6 +9,22 @@ const sourceUrl = useSourceUrl()
 const { openShortcuts, toggleMarkdownGuide } = useHelp()
 const { status: aiStatus } = useAiStatus()
 const photoNoteOpen = ref(false)
+/** Menú lateral en el celular (allí es un panel modal). */
+const sidebarOpen = ref(false)
+
+/**
+ * En el celular la barra lateral es un panel modal: al cerrarse devuelve el foco a
+ * su botón de menú, y eso cerraría un diálogo recién abierto. Se cierra primero y
+ * el diálogo se abre cuando el panel ya terminó de cerrarse.
+ */
+function openPhotoNote() {
+  if (!sidebarOpen.value) {
+    photoNoteOpen.value = true
+    return
+  }
+  sidebarOpen.value = false
+  setTimeout(() => (photoNoteOpen.value = true), 350)
+}
 
 // «?» fuera del editor y de los campos de texto.
 defineShortcuts({ '?': openShortcuts })
@@ -70,6 +86,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
       Mientras cambia el ancho, el contenido se recorta en lugar de partirse en líneas.
     -->
     <UDashboardSidebar
+      v-model:open="sidebarOpen"
       collapsible
       resizable
       :collapsed-size="4"
@@ -133,7 +150,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
               square
               :disabled="!canWrite"
               aria-label="Nota desde foto"
-              @click="photoNoteOpen = true"
+              @click="openPhotoNote"
             />
           </UTooltip>
           <input
