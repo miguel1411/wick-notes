@@ -66,7 +66,7 @@ const groups: { title: string; entries: Entry[] }[] = [
   {
     title: 'Diagramas',
     entries: [
-      { title: 'Diagrama de flujo', syntax: '```mermaid\nflowchart LR\n  A[Idea] --> B{¿Funciona?}\n  B -- sí --> C[Publicar]\n  B -- no --> A\n```', description: 'Un bloque mermaid se dibuja como diagrama; con el cursor dentro se edita su código. LR va de izquierda a derecha; TD, de arriba abajo.', keywords: 'mermaid diagram flowchart flujo proceso grafico esquema' },
+      { title: 'Diagrama de flujo', syntax: '```mermaid\nflowchart LR\n  A[Idea] --> B{¿Funciona?}\n  B -- sí --> C[Publicar]\n  B -- no --> A\n```', description: 'Un bloque mermaid se dibuja como diagrama. Con sus botones se amplía (zoom y arrastre) o se edita el código, que muestra debajo el diagrama al momento. LR va de izquierda a derecha; TD, de arriba abajo.', keywords: 'mermaid diagram flowchart flujo proceso grafico esquema' },
       { title: 'Diagrama de secuencia', syntax: '```mermaid\nsequenceDiagram\n  Navegador->>Servidor: GET /api/notas\n  Servidor-->>Navegador: 200 OK\n```', description: 'Mensajes entre participantes, en orden.', keywords: 'mermaid sequence secuencia mensajes api llamadas' },
       { title: 'Mapa mental', syntax: '```mermaid\nmindmap\n  wick notes\n    Web\n    CLI\n    MCP\n```', description: 'La sangría marca qué cuelga de qué.', keywords: 'mermaid mindmap mapa mental ideas arbol' },
     ],

@@ -176,5 +176,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     <NoteSearch />
 
     <PhotoNoteDialog v-if="aiStatus?.enabled" v-model:open="photoNoteOpen" />
+
+    <DiagramViewer />
   </UDashboardGroup>
 </template>

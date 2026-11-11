@@ -325,7 +325,8 @@ nota limpia y estructurada. Viene **desactivada**: wick funciona igual sin IA.
   Cada uso queda registrado (tokens y búsquedas, sin contenido). El límite diario
   cuenta las notas creadas; además, cada usuario tiene como mucho el triple de
   intentos al día (rechazados o fallidos incluidos). Fotos: JPEG, PNG o WebP, hasta
-  5 MB cada una (la web las reduce sola; con la CLI, redúcelas antes si pesan más).
+  25 MB cada una. El servidor las reduce a 2576 px y les quita los metadatos (como
+  la ubicación GPS) antes de enviarlas.
 - **Seguridad:** las notas relacionadas salen solo del espacio donde se crea la
   nota, y las imágenes que proponga el modelo quedan como enlaces (no se cargan).
 
@@ -353,10 +354,13 @@ títulos de una línea se ven con su tamaño mientras se escriben.
   todo el ancho; con los mismos guiones en todas, se ajusta al contenido. El PDF
   respeta los mismos anchos.
 - Diagramas: un bloque ` ```mermaid ` se dibuja como diagrama
-  ([Mermaid](https://mermaid.js.org): flujo, secuencia, mapa mental…); con el
-  cursor dentro se edita su código. Si tiene un error, se indica en qué línea.
-  La librería solo se descarga al abrir una nota con diagramas. En el PDF, por
-  ahora, el diagrama sale como su código.
+  ([Mermaid](https://mermaid.js.org): flujo, secuencia, mapa mental…) al ancho
+  de la columna de texto. Un clic en el diagrama (o *Ampliar*) lo abre en un
+  visor a pantalla completa con zoom (rueda, pellizco, `+`,
+  `−`, `0`) y arrastre; *Editar código* pone el cursor en el código y, debajo,
+  el diagrama se actualiza mientras escribes (si hay un error, se indica en qué
+  línea y se mantiene el último dibujo correcto). La librería solo se descarga al
+  abrir una nota con diagramas. En el PDF, por ahora, el diagrama sale como su código.
 - Ayuda: `?` muestra todos los atajos de teclado; el menú «…» de la nota abre la
   guía de Markdown (con buscador), que se puede tener abierta mientras se escribe.
 

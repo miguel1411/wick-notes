@@ -19,7 +19,7 @@ import { splitTitleFromMarkdown } from '../markdown-title'
 import { DEFAULT_TITLE } from '../schemas'
 import { searchDocuments } from '../search'
 import { defaultWorkspaceId, requireWorkspaceAccess } from '../workspaces'
-import { validatePhotos } from './images'
+import { preparePhotos } from './images'
 import { countAiNotesToday, createAiProvider, loadAiRuntime, startOfDay } from './settings'
 import { type AiProvider, AiProviderError, type AiProviderFactory, type AiUsage, type RelatedNote, type Source } from './types'
 
@@ -83,7 +83,7 @@ export async function createNoteFromPhotos(actor: AuthUser, input: PhotoNoteInpu
 
   const workspaceId = input.workspaceId ?? (await defaultWorkspaceId(actor))
   await requireWorkspaceAccess(actor, workspaceId, 'write')
-  const images = validatePhotos(input.images)
+  const images = await preparePhotos(input.images)
   const instructions = input.instructions?.trim() || undefined
   if (instructions && instructions.length > MAX_INSTRUCTIONS) {
     throw new ValidationError(`Las indicaciones no pueden superar ${MAX_INSTRUCTIONS} caracteres`)

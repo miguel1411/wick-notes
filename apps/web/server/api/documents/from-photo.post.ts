@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const declared = getRequestHeader(event, 'content-length')
   if (!declared) throw createError({ statusCode: 411, message: 'Falta el tamaño de la petición (Content-Length)' })
   if (Number(declared) > MAX_PHOTOS_TOTAL_BYTES + 1024 * 1024) {
-    throw createError({ statusCode: 413, message: 'Entre todas, las fotos superan los 20 MB' })
+    throw createError({ statusCode: 413, message: 'Las fotos son demasiado grandes (como máximo 25 MB cada una)' })
   }
 
   const parts = (await readMultipartFormData(event)) ?? []

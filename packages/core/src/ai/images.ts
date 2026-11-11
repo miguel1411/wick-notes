@@ -1,11 +1,17 @@
+import sharp from 'sharp'
 import { ValidationError } from '../errors'
 import type { AiImage, ImageMediaType } from './types'
 
 export const MAX_PHOTOS = 4
-/** El máximo por imagen que acepta Anthropic. La web ya las reduce antes de enviarlas. */
-export const MAX_PHOTO_BYTES = 5 * 1024 * 1024
-/** Entre todas: en base64 deben caber en una petición al proveedor (32 MB en Anthropic). */
-export const MAX_PHOTOS_TOTAL_BYTES = 20 * 1024 * 1024
+/** Lo que se acepta subir por foto (una foto de celular a tamaño completo). */
+export const MAX_PHOTO_BYTES = 25 * 1024 * 1024
+/** Tamaño máximo de toda la petición con las fotos. */
+export const MAX_PHOTOS_TOTAL_BYTES = MAX_PHOTOS * MAX_PHOTO_BYTES
+
+/** Lado largo máximo que aprovecha el modelo; más resolución solo pesa más. */
+const MAX_SIDE = 2576
+/** Máximo por imagen que acepta Anthropic. */
+const PROVIDER_MAX_BYTES = 5 * 1024 * 1024
 
 /** Tipo real de la imagen por sus primeros bytes (no por lo que diga el navegador). */
 export function detectImageType(data: Uint8Array): ImageMediaType | null {
@@ -17,19 +23,36 @@ export function detectImageType(data: Uint8Array): ImageMediaType | null {
   return null
 }
 
-/** Comprueba número, tamaño y tipo de las fotos. Los errores dicen qué foto falla (1, 2…). */
-export function validatePhotos(images: Uint8Array[]): AiImage[] {
+/**
+ * Comprueba las fotos y las prepara para el proveedor: las endereza según su
+ * EXIF, las reduce a 2576 px de lado largo y las vuelve a codificar como JPEG.
+ * Así cualquier foto (de la web, la CLI o la API) cabe en los límites del
+ * proveedor, y se pierden sus metadatos (por ejemplo, la ubicación GPS).
+ * Los errores dicen qué foto falla (1, 2…).
+ */
+export async function preparePhotos(images: Uint8Array[]): Promise<AiImage[]> {
   if (!images.length) throw new ValidationError('Añade al menos una foto')
   if (images.length > MAX_PHOTOS) throw new ValidationError(`Como máximo ${MAX_PHOTOS} fotos por nota`)
-  const photos = images.map((data, i): AiImage => {
-    if (data.length > MAX_PHOTO_BYTES) {
-      throw new ValidationError(`La foto ${i + 1} supera los 5 MB. Redúcela (por ejemplo, a 2576 px de lado largo).`)
-    }
-    const mediaType = detectImageType(data)
-    if (!mediaType) throw new ValidationError(`La foto ${i + 1} no es una imagen JPEG, PNG o WebP`)
-    return { data, mediaType }
+  images.forEach((data, i) => {
+    if (data.length > MAX_PHOTO_BYTES) throw new ValidationError(`La foto ${i + 1} supera los 25 MB`)
+    if (!detectImageType(data)) throw new ValidationError(`La foto ${i + 1} no es una imagen JPEG, PNG o WebP`)
   })
-  const total = images.reduce((sum, d) => sum + d.length, 0)
-  if (total > MAX_PHOTOS_TOTAL_BYTES) throw new ValidationError('Entre todas, las fotos superan los 20 MB')
-  return photos
+  return Promise.all(images.map((data, i) => toJpeg(data, i + 1)))
+}
+
+async function toJpeg(data: Uint8Array, photo: number): Promise<AiImage> {
+  const encode = (quality: number) =>
+    sharp(data, { failOn: 'error', limitInputPixels: 100_000_000 })
+      .rotate()
+      .resize({ width: MAX_SIDE, height: MAX_SIDE, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality })
+      .toBuffer()
+  try {
+    let out = await encode(85)
+    if (out.length > PROVIDER_MAX_BYTES) out = await encode(70)
+    return { data: new Uint8Array(out), mediaType: 'image/jpeg' }
+  } catch {
+    throw new ValidationError(`No se pudo leer la foto ${photo}: puede que esté dañada`)
+  }
 }

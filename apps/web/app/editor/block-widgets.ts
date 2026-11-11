@@ -22,14 +22,15 @@ const focusTracking = [focused, EditorView.focusChangeEffect.of((_, focusing) =>
 /** Bloques que pueden contener otros bloques; el resto no se recorre por dentro. */
 const CONTAINERS = new Set(['Document', 'Blockquote', 'BulletList', 'OrderedList', 'ListItem'])
 
+type MakeWidget = (node: SyntaxNode, state: EditorState, from: number, to: number) => WidgetType | null
+
 /**
  * Dibuja con un widget cada nodo `nodeName` para el que `widget` devuelva uno
- * (`from`/`to`: inicio de su primera línea y final de la última).
+ * (`from`/`to`: inicio de su primera línea y final de la última). Con
+ * `whileEditing`, mientras la selección está en el bloque se ve su Markdown y,
+ * debajo, ese otro widget (por ejemplo, la vista previa de un diagrama).
  */
-export function blockWidgets(
-  nodeName: string,
-  widget: (node: SyntaxNode, state: EditorState, from: number, to: number) => WidgetType | null,
-): Extension {
+export function blockWidgets(nodeName: string, widget: MakeWidget, options: { whileEditing?: MakeWidget } = {}): Extension {
   const build = (state: EditorState): DecorationSet => {
     const doc = state.doc
     const ranges = state.field(focused) ? state.selection.ranges : []
@@ -39,7 +40,11 @@ export function blockWidgets(
         if (ref.name !== nodeName) return CONTAINERS.has(ref.name)
         const from = doc.lineAt(ref.from).from
         const to = doc.lineAt(ref.to).to
-        if (ranges.some((r) => r.from <= to && r.to >= from)) return false
+        if (ranges.some((r) => r.from <= to && r.to >= from)) {
+          const below = options.whileEditing?.(ref.node, state, from, to)
+          if (below) out.push(Decoration.widget({ widget: below, block: true, side: 1 }).range(to))
+          return false
+        }
         const w = widget(ref.node, state, from, to)
         if (w) out.push(Decoration.replace({ widget: w, block: true }).range(from, to))
         return false

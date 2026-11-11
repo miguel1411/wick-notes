@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import sharp from 'sharp'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { disconnectPrisma, getPrisma } from '@wick/db'
 import {
   AiDailyLimitError,
@@ -16,6 +17,7 @@ import {
   getAiStatus,
   getDocument,
   NotHandwrittenError,
+  preparePhotos,
   readMarkdown,
   renameFolder,
   setWorkspaceMember,
@@ -32,8 +34,9 @@ import {
 import { makeUser, resetDatabase } from './helpers'
 
 const KEY = 'sk-ant-api03-clave-de-prueba-1234'
-/** Bytes que empiezan como un JPEG: basta para la validación de tipo. */
-const jpeg = (n = 1) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array(32).fill(n)])
+/** Una foto JPEG real (pequeña), distinta según `n`. */
+let samples: Uint8Array[] = []
+const jpeg = (n = 1) => samples[(n - 1) % samples.length]!
 
 /** Proveedor simulado: registra las llamadas y responde lo que se le diga. */
 function fakeProvider(opts: { reading?: Partial<PhotoReading>; markdown?: string; failWith?: AiProviderError; delayMs?: number } = {}) {
@@ -77,6 +80,14 @@ function fakeProvider(opts: { reading?: Partial<PhotoReading>; markdown?: string
   }
   return { factory, calls }
 }
+
+beforeAll(async () => {
+  samples = await Promise.all(
+    ['#ffffff', '#f5f0e6', '#eeeeee'].map(async (background) =>
+      new Uint8Array(await sharp({ create: { width: 40, height: 30, channels: 3, background } }).jpeg().toBuffer()),
+    ),
+  )
+})
 
 let admin: AuthUser
 let ana: AuthUser
@@ -180,9 +191,11 @@ describe('nota desde foto', () => {
     await expect(run([])).rejects.toThrow(/al menos una foto/)
     await expect(run([jpeg(), jpeg(), jpeg(), jpeg(), jpeg()])).rejects.toThrow(/máximo 4/)
     await expect(run([jpeg(), new TextEncoder().encode('no soy una imagen')])).rejects.toThrow(/La foto 2 no es una imagen/)
-    const big = new Uint8Array(6 * 1024 * 1024)
+    const big = new Uint8Array(26 * 1024 * 1024)
     big.set([0xff, 0xd8, 0xff])
-    await expect(run([big])).rejects.toThrow(/La foto 1 supera los 5 MB/)
+    await expect(run([big])).rejects.toThrow(/La foto 1 supera los 25 MB/)
+    const broken = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5])
+    await expect(run([jpeg(), broken])).rejects.toThrow(/No se pudo leer la foto 2/)
     expect(p.calls.read).toBe(0)
   })
 
@@ -362,6 +375,25 @@ describe('nota desde foto', () => {
     expect(run).toMatchObject({ status: 'FAILED' })
     expect(run.error).toMatch(/^unavailable:/)
     expect(await getPrisma().document.count()).toBe(0)
+  })
+})
+
+describe('preparePhotos', () => {
+  it('reduce a 2576 px de lado largo, convierte a JPEG y quita los metadatos', async () => {
+    const png = await sharp({ create: { width: 4000, height: 1000, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .withExif({ IFD0: { Copyright: 'dato privado' } })
+      .png()
+      .toBuffer()
+    const [photo] = await preparePhotos([new Uint8Array(png)])
+    expect(photo!.mediaType).toBe('image/jpeg')
+    const meta = await sharp(photo!.data).metadata()
+    expect(meta).toMatchObject({ format: 'jpeg', width: 2576, height: 644 })
+    expect(meta.exif).toBeUndefined()
+  })
+
+  it('no agranda las fotos pequeñas', async () => {
+    const [photo] = await preparePhotos([jpeg()])
+    expect(await sharp(photo!.data).metadata()).toMatchObject({ width: 40, height: 30 })
   })
 })
 
