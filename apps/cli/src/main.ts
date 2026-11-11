@@ -38,6 +38,8 @@ Uso:
   wick notes export --all [-o carpeta]        Exporta todas las notas
   wick notes export <nota> --pdf [-o destino] Guarda la nota como PDF (también con --all)
   wick notes import <fichero.md>…             Crea notas a partir de ficheros Markdown
+  wick notes from-photo <foto>… [-i texto]    Nota desde fotos de apuntes a mano (hasta 4; con IA,
+                         [--no-research]      si el servidor la tiene activada); -i: indicaciones
   wick notes delete <nota> [--yes]            Elimina una nota
   wick notes history <nota> [versión]         Historial de versiones (o una versión en Markdown)
   wick notes restore <nota> <versión>         Restaura una versión (lo actual queda en el historial)
@@ -47,7 +49,7 @@ Ejemplo con tubería:  journalctl -n 50 | wick notes append "Incidencias" -f -
 Los subcomandos de notes también funcionan sin «notes»: wick list, wick get…
 
 Opciones generales:
-  -w, --workspace   Espacio de trabajo (nombre o id) para list, create e import
+  -w, --workspace   Espacio de trabajo (nombre o id) para list, create, import y from-photo
   --json            Salida en JSON (list, search, get, create, whoami, workspaces)
   --server URL      Servidor (o WICK_SERVER)
   --token TOKEN     Token de API (o WICK_TOKEN)
@@ -79,6 +81,8 @@ export async function run(argv: string[], io: IO): Promise<number> {
         force: { type: 'boolean' },
         workspace: { type: 'string', short: 'w' },
         ids: { type: 'boolean' },
+        'no-research': { type: 'boolean' },
+        instructions: { type: 'string', short: 'i' },
       },
     })
   } catch (err) {
@@ -171,6 +175,10 @@ export async function run(argv: string[], io: IO): Promise<number> {
         break
       case 'import':
         await notes.importFiles(ctx, rest, flags)
+        break
+      case 'from-photo':
+      case 'photo':
+        await notes.fromPhoto(ctx, rest, flags)
         break
       case 'history':
         await notes.history(ctx, rest, flags)

@@ -24,14 +24,17 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  sessions  Session[]
-  apiTokens ApiToken[]
-  documents  Document[]        @relation("DocumentCreatedBy")
-  versions   DocumentVersion[]
-  workspaces WorkspaceMember[]
-  createdWorkspaces Workspace[] @relation("WorkspaceCreatedBy")
-  moveRequests      MoveRequest[] @relation("MoveRequestedBy")
-  moveDecisions     MoveRequest[] @relation("MoveDecidedBy")
+  sessions          Session[]
+  apiTokens         ApiToken[]
+  documents         Document[]        @relation("DocumentCreatedBy")
+  versions          DocumentVersion[]
+  workspaces        WorkspaceMember[]
+  createdWorkspaces Workspace[]       @relation("WorkspaceCreatedBy")
+  moveRequests      MoveRequest[]     @relation("MoveRequestedBy")
+  moveDecisions     MoveRequest[]     @relation("MoveDecidedBy")
+  aiFolders         AiUserFolder[]
+  aiRuns            AiRun[]
+  aiSettingsUpdates AiSettings[]
 }
 
 enum WorkspaceRole {
@@ -56,6 +59,7 @@ model Workspace {
   members     WorkspaceMember[]
   folders     Folder[]
   documents   Document[]
+  aiFolders   AiUserFolder[]
 }
 
 model WorkspaceMember {
@@ -72,16 +76,17 @@ model WorkspaceMember {
 
 /// Carpeta (anidable) dentro de un espacio de trabajo.
 model Folder {
-  id          String     @id @default(cuid())
+  id          String         @id @default(cuid())
   workspaceId String
-  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   parentId    String?
-  parent      Folder?    @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Folder[]   @relation("FolderTree")
+  parent      Folder?        @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[]       @relation("FolderTree")
   name        String
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   documents   Document[]
+  aiOwners    AiUserFolder[]
 
   @@index([workspaceId, parentId])
 }
@@ -107,45 +112,46 @@ enum TokenScope {
 
 /// Token personal para la API (CLI, MCP, scripts). Solo se guarda su hash.
 model ApiToken {
-  id         String     @id @default(cuid())
-  userId     String
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
   /// SHA-256 del token completo.
-  tokenHash  String     @unique
+  tokenHash    String        @unique
   /// Primeros caracteres del token, para reconocerlo en la lista.
-  prefix     String
-  scope      TokenScope
-  createdAt  DateTime   @default(now())
-  lastUsedAt DateTime?
-  expiresAt  DateTime?
+  prefix       String
+  scope        TokenScope
+  createdAt    DateTime      @default(now())
+  lastUsedAt   DateTime?
+  expiresAt    DateTime?
   moveRequests MoveRequest[]
 
   @@index([userId])
 }
 
 model Document {
-  id          String   @id @default(cuid())
-  title       String
+  id            String            @id @default(cuid())
+  title         String
   /// Estado Yjs codificado (Y.encodeStateAsUpdate). Fuente de verdad del contenido.
-  yjsState    Bytes?
+  yjsState      Bytes?
   /// Texto plano del contenido (derivado de yjsState), para mostrar fragmentos.
-  contentText   String @default("")
+  contentText   String            @default("")
   /// contentText en minúsculas y sin tildes: es lo que se compara al buscar.
-  contentSearch String @default("")
+  contentSearch String            @default("")
   /// Título en minúsculas y sin tildes.
-  titleSearch   String @default("")
-  createdById String?
-  createdBy   User?    @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  titleSearch   String            @default("")
+  createdById   String?
+  createdBy     User?             @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   /// Un espacio con notas no se puede borrar (Restrict): primero hay que moverlas o borrarlas.
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  folderId    String?
-  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  versions    DocumentVersion[]
-  moveRequests MoveRequest[]
+  workspaceId   String
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  folderId      String?
+  folder        Folder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  versions      DocumentVersion[]
+  moveRequests  MoveRequest[]
+  aiRuns        AiRun[]
 
   @@index([updatedAt])
   @@index([workspaceId, folderId])
@@ -214,4 +220,75 @@ model DocumentVersion {
   createdAt   DateTime      @default(now())
 
   @@index([documentId, createdAt])
+}
+
+// ------------------------------------------------------------ IA (opcional)
+
+/// Ajustes de la IA de la instancia (una sola fila, id «instance»). Se cambian desde la web.
+model AiSettings {
+  id              String   @id @default("instance")
+  /// Apagada, la función no aparece y la API la rechaza.
+  enabled         Boolean  @default(false)
+  provider        String   @default("anthropic")
+  /// Clave de API cifrada (AES-256-GCM, ver core/ai/secret.ts). Nunca en claro.
+  apiKeyEncrypted String?
+  /// Últimos caracteres de la clave, para reconocerla en la web.
+  apiKeyHint      String?
+  model           String   @default("claude-opus-5-5")
+  /// ¿Se permite investigar en internet?
+  webSearch       Boolean  @default(true)
+  maxSearches     Int      @default(5)
+  /// Notas con IA por usuario y día.
+  dailyLimit      Int      @default(10)
+  updatedAt       DateTime @updatedAt
+  updatedById     String?
+  updatedBy       User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+/// Carpeta donde se guardan las notas con IA de cada usuario en cada espacio.
+/// Si la carpeta se borra, la fila desaparece (Cascade) y se crea otra.
+model AiUserFolder {
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folderId    String    @unique
+  folder      Folder    @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@id([userId, workspaceId])
+}
+
+enum AiRunStatus {
+  /// En curso: reserva el cupo del día mientras se crea la nota.
+  PENDING
+  /// Se creó la nota.
+  CREATED
+  /// Se rechazó antes de redactar (p. ej. una foto no está escrita a mano).
+  REJECTED
+  /// Falló (proveedor, rechazo de seguridad, error interno).
+  FAILED
+}
+
+/// Registro de cada uso de la IA: para el límite diario y para conocer el costo.
+/// Sin imágenes ni contenido.
+model AiRun {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId  String
+  documentId   String?
+  document     Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  provider     String
+  model        String
+  status       AiRunStatus
+  images       Int
+  inputTokens  Int         @default(0)
+  outputTokens Int         @default(0)
+  webSearches  Int         @default(0)
+  /// Motivo del rechazo o del fallo (texto corto, sin contenido de la nota).
+  error        String?
+  createdAt    DateTime    @default(now())
+
+  @@index([userId, createdAt])
 }

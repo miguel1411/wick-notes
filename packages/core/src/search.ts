@@ -90,7 +90,7 @@ const resultSelect = {
 export async function searchDocuments(
   actor: AuthUser,
   query: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; workspaceId?: string } = {},
 ): Promise<SearchResult[]> {
   requireActor(actor)
   const terms = [...new Set(normalizeForSearch(query).split(/\s+/).filter(Boolean))].slice(0, 10)
@@ -100,6 +100,7 @@ export async function searchDocuments(
   const where: Prisma.DocumentWhereInput = {
     AND: [
       await readableDocumentsWhere(actor),
+      ...(options.workspaceId ? [{ workspaceId: options.workspaceId }] : []),
       ...terms.map((t) => ({ OR: [{ titleSearch: { contains: t } }, { contentSearch: { contains: t } }] })),
     ],
   }

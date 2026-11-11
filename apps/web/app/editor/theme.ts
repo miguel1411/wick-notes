@@ -108,6 +108,27 @@ export const wickTheme = EditorView.theme({
     fontWeight: '600',
   },
   '.cm-md-table-widget [data-href]': { cursor: 'pointer' },
+  // Diagramas Mermaid: centrados, sin pasar del ancho del texto.
+  '.cm-md-mermaid': {
+    display: 'flex',
+    justifyContent: 'center',
+    margin: '0.5em 0',
+    padding: '0.75em',
+    border: '1px solid var(--ui-border)',
+    borderRadius: '8px',
+    overflowX: 'auto',
+    cursor: 'text',
+  },
+  '.cm-md-mermaid svg': { maxWidth: '100%', height: 'auto' },
+  '.cm-md-mermaid-loading': { color: 'var(--ui-text-dimmed)', fontSize: '0.85em' },
+  '.cm-md-mermaid-error': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25em',
+    fontSize: '0.85em',
+    color: 'var(--ui-text-muted)',
+  },
+  '.cm-md-mermaid-error strong': { color: 'var(--ui-error)' },
   '.cm-md-hr': {
     display: 'inline-block',
     width: '100%',

@@ -9,6 +9,8 @@ const STATUS: Record<WickError['code'], number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   RATE_LIMITED: 429,
+  UNPROCESSABLE: 422,
+  UNAVAILABLE: 503,
 }
 
 /**
@@ -29,6 +31,12 @@ export async function runCore<T>(fn: () => Promise<T>, event?: H3Event): Promise
     }
     throw err
   }
+}
+
+/** Error como JSON para canales sin código HTTP propio (eventos de un stream). */
+export function errorPayload(err: unknown): { statusCode: number; message: string; code?: string; details?: unknown } {
+  if (err instanceof WickError) return { statusCode: STATUS[err.code], message: err.message, code: err.code, details: err.details }
+  return { statusCode: 500, message: 'Ha ocurrido un error inesperado' }
 }
 
 export function requireId(event: H3Event): string {

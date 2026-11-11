@@ -30,6 +30,7 @@ let revisions = new Map<string, string>()
 /** Simula que las revisiones caducaron (servidor reiniciado). */
 let revisionsExpired = false
 let lastPut: { markdown?: string; mode?: string; baseRevision?: string } | null = null
+let lastPhoto: { images: number; research: boolean; workspace?: string; instructions?: string } | null = null
 
 const newId = () => `c${String(++seq).padStart(24, '0')}`
 const summary = (n: Note) => ({ id: n.id, title: n.title, createdAt: n.createdAt, updatedAt: n.updatedAt, createdBy: { id: 'u1', name: 'Ana' } })
@@ -49,12 +50,30 @@ function startServer() {
     if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { message: 'Token de API no válido' })
     const chunks: Buffer[] = []
     for await (const c of req) chunks.push(c as Buffer)
-    const json = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {}
+    const isJson = String(req.headers['content-type'] ?? '').includes('json')
+    const json = chunks.length && isJson ? JSON.parse(Buffer.concat(chunks).toString()) : {}
     const url = new URL(req.url!, 'http://x')
     const p = url.pathname
     const find = (id: string) => notes.find((n) => n.id === id)
     let m: RegExpMatchArray | null
 
+    if (p === '/api/documents/from-photo' && req.method === 'POST') {
+      const raw = Buffer.concat(chunks).toString('latin1')
+      const field = (name: string) => new RegExp(`name="${name}"\r\n\r\n([^\r]*)`).exec(raw)?.[1]
+      const research = field('research') === 'true'
+      lastPhoto = { images: raw.split('name="images"').length - 1, research, workspace: field('workspaceId'), instructions: field('instructions') }
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const ev = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      ev('stage', { stage: 'reading', research })
+      if (raw.includes('IMPRESO')) {
+        ev('error', { statusCode: 422, message: 'No es posible transcribir: la foto 1 no es un documento escrito a mano.' })
+        return res.end()
+      }
+      for (const stage of ['context', 'writing', 'saving']) ev('stage', { stage, research })
+      const n = addNote('Fotosíntesis', 'Resumen.')
+      ev('done', { document: summary(n), researched: research })
+      return res.end()
+    }
     if (p === '/api/workspaces/tree') {
       const general = {
         id: 'general', name: 'General', role: 'editor', everyone: true,
@@ -343,6 +362,40 @@ describe('wick notes', () => {
     expect(all.out).toContain('3 notas exportadas')
     const files = (await readdir(dir)).filter((f) => f.endsWith('.pdf')).sort()
     expect(files).toEqual(['Otra.pdf', 'Red de casa (2).pdf', 'Red de casa.pdf'])
+  })
+
+  it('crea una nota desde fotos y muestra el progreso', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    await writeFile(join(dir, 'pag1.jpg'), jpeg)
+    await writeFile(join(dir, 'pag2.jpg'), jpeg)
+    const r = await wick(['from-photo', 'pag1.jpg', 'pag2.jpg', '-w', 'Personal', '-i', 'para el examen'], { env: loggedIn })
+    expect(r.code).toBe(0)
+    expect(r.out.trim()).toBe(notes[0]!.id)
+    expect(r.err).toContain('Leyendo las fotos…')
+    expect(r.err).toContain('Investigando y redactando…')
+    expect(r.err).toContain('Creada «Fotosíntesis»')
+    expect(lastPhoto).toEqual({ images: 2, research: true, workspace: 'wsprivado', instructions: 'para el examen' })
+
+    const quiet = await wick(['notes', 'from-photo', 'pag1.jpg', '--no-research'], { env: loggedIn })
+    expect(quiet.code).toBe(0)
+    expect(quiet.err).toContain('Redactando…')
+    expect(lastPhoto).toMatchObject({ images: 1, research: false })
+  })
+
+  it('from-photo explica los errores', async () => {
+    await writeFile(join(dir, 'impreso.jpg'), Buffer.from('IMPRESO'))
+    const rejected = await wick(['from-photo', 'impreso.jpg'], { env: loggedIn })
+    expect(rejected.code).toBe(1)
+    expect(rejected.err).toContain('No es posible transcribir: la foto 1 no es un documento escrito a mano.')
+
+    expect((await wick(['from-photo'], { env: loggedIn })).code).toBe(2)
+    const many = await wick(['from-photo', 'a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg'], { env: loggedIn })
+    expect(many.code).toBe(2)
+    expect(many.err).toContain('Como máximo 4 fotos')
+    const heic = await wick(['from-photo', 'foto.HEIC'], { env: loggedIn })
+    expect(heic.err).toContain('no convierte fotos HEIC')
+    const missing = await wick(['from-photo', 'no-existe.jpg'], { env: loggedIn })
+    expect(missing.err).toContain('No se puede leer «no-existe.jpg»')
   })
 
   it('importa ficheros', async () => {

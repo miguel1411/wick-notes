@@ -7,6 +7,8 @@ const { user, isAdmin, logout } = useAuth()
 const colorMode = useColorMode()
 const sourceUrl = useSourceUrl()
 const { openShortcuts, toggleMarkdownGuide } = useHelp()
+const { status: aiStatus } = useAiStatus()
+const photoNoteOpen = ref(false)
 
 // «?» fuera del editor y de los campos de texto.
 defineShortcuts({ '?': openShortcuts })
@@ -24,7 +26,12 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
   [{ type: 'label', label: user.value?.name, description: `@${user.value?.username}` }],
   [
     { label: 'Mi cuenta', icon: 'i-lucide-user-cog', to: '/account' },
-    ...(isAdmin.value ? [{ label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/users' }] : []),
+    ...(isAdmin.value
+      ? [
+          { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/users' },
+          { label: 'Inteligencia artificial', icon: 'i-lucide-sparkles', to: '/admin/ai' },
+        ]
+      : []),
     {
       label: 'Apariencia',
       icon: 'i-lucide-sun-moon',
@@ -118,6 +125,17 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
               @click="fileInput?.click()"
             />
           </UTooltip>
+          <UTooltip v-if="aiStatus?.enabled" text="Nota desde foto">
+            <UButton
+              icon="i-lucide-camera"
+              color="neutral"
+              variant="outline"
+              square
+              :disabled="!canWrite"
+              aria-label="Nota desde foto"
+              @click="photoNoteOpen = true"
+            />
+          </UTooltip>
           <input
             ref="fileInput"
             type="file"
@@ -156,5 +174,7 @@ const userMenu = computed<DropdownMenuItem[][]>(() => [
     <slot />
 
     <NoteSearch />
+
+    <PhotoNoteDialog v-if="aiStatus?.enabled" v-model:open="photoNoteOpen" />
   </UDashboardGroup>
 </template>

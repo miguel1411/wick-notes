@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import { ApiError, type NoteSummary } from '../api'
+import { ApiError, type NoteSummary, type PhotoNoteStage } from '../api'
 import { colors, pad, relativeTime, truncate } from '../format'
 import { CliError, UsageError } from '../io'
 import type { Context } from '../main'
@@ -151,6 +151,48 @@ export async function exportNotes(ctx: Context, ref: string | undefined, flags: 
   if (await isDirectory(target)) target = join(target, filename)
   await writeFile(target, data)
   io.stdout(`${target}\n`)
+}
+
+// ---------------------------------------------------------------- nota desde foto
+
+const PHOTO_STAGES: Record<PhotoNoteStage, (research: boolean) => string> = {
+  reading: () => 'Leyendo las fotos…',
+  context: () => 'Buscando notas relacionadas…',
+  writing: (research) => (research ? 'Investigando y redactando…' : 'Redactando…'),
+  saving: () => 'Guardando la nota…',
+}
+
+/**
+ * Nota desde foto: de 1 a 4 fotos de apuntes escritos a mano (JPEG, PNG o WebP)
+ * a una nota nueva en tu carpeta. Tiene que estar activada en el servidor.
+ */
+export async function fromPhoto(
+  ctx: Context,
+  files: string[],
+  flags: { workspace?: string; 'no-research'?: boolean; instructions?: string; json?: boolean },
+) {
+  if (!files.length) throw new UsageError('Uso: wick notes from-photo <foto>… [--no-research] [-i "indicaciones"] [-w espacio]')
+  if (files.length > 4) throw new UsageError('Como máximo 4 fotos por nota')
+  const { io } = ctx
+  const c = colors(io)
+  const images = []
+  for (const file of files) {
+    if (/\.(heic|heif)$/i.test(file)) throw new CliError(`«${file}»: la CLI no convierte fotos HEIC. Expórtala como JPEG o PNG.`)
+    const path = resolve(io.cwd, file)
+    const data = await readFile(path).catch(() => {
+      throw new CliError(`No se puede leer «${file}»`)
+    })
+    images.push({ data: new Uint8Array(data), name: basename(path) })
+  }
+  const workspaceId = await resolveWorkspace(ctx, flags.workspace)
+  const { document, researched } = await ctx.api().photoNote(
+    { images, workspaceId, research: !flags['no-research'], instructions: flags.instructions?.trim() || undefined },
+    (stage, research) => io.stderr(`${c.dim(PHOTO_STAGES[stage](research))}\n`),
+  )
+  if (flags.json) return io.stdout(JSON.stringify({ ...document, researched }, null, 2) + '\n')
+  io.stdout(`${document.id}\n`)
+  io.stderr(`${c.green('✔')} Creada «${document.title}» · ${ctx.server()}/d/${document.id}\n`)
+  io.stderr(`${c.dim('Revisa el contenido antes de darlo por bueno.')}\n`)
 }
 
 // ---------------------------------------------------------------- create / import / append

@@ -1,17 +1,14 @@
 /**
  * Tablas en la vista previa en vivo: fuera del cursor se dibuja la tabla; si la
- * selección toca alguna de sus líneas, se ve y se edita el Markdown tal cual.
- * Un clic en una celda pone el cursor en esa celda. Los anchos de las columnas
- * salen de la fila separadora (`|---|------|`, ver parseTableDelimiter).
- *
- * Va aparte de live-preview.ts porque sustituye varias líneas de golpe, y eso
- * CodeMirror solo lo admite desde un StateField, no desde un ViewPlugin.
+ * selección toca alguna de sus líneas, se ve y se edita el Markdown tal cual
+ * (block-widgets.ts). Un clic en una celda pone el cursor en esa celda. Los anchos
+ * de las columnas salen de la fila separadora (`|---|------|`, ver parseTableDelimiter).
  */
-import { syntaxTree } from '@codemirror/language'
-import { type EditorState, type Range, StateEffect, StateField } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
+import type { EditorState } from '@codemirror/state'
+import { type EditorView, WidgetType } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 import { parseTableDelimiter } from '@wick/core/markdown-table'
+import { blockWidgets, placeCursor } from './block-widgets'
 import { safeUrl } from './live-preview'
 
 interface Cell {
@@ -19,16 +16,6 @@ interface Cell {
   offset: number
   node: SyntaxNode | null
 }
-
-// --- Foco ---
-// Sin foco no hay nada «activo» y todas las tablas se dibujan, como en el resto de
-// la vista previa. Un StateField no ve el foco de la vista: se lo pasa este efecto.
-const setFocus = StateEffect.define<boolean>()
-const focused = StateField.define<boolean>({
-  create: () => false,
-  update: (value, tr) => tr.effects.reduce((v, e) => (e.is(setFocus) ? e.value : v), value),
-})
-const trackFocus = EditorView.focusChangeEffect.of((_, focusing) => setFocus.of(focusing))
 
 /** Celdas de una fila (cabecera o cuerpo), separadas por sus `|`. Las vacías no tienen nodo. */
 function rowCells(row: SyntaxNode, tableFrom: number): Cell[] {
@@ -158,13 +145,8 @@ class TableWidget extends WidgetType {
         window.open(href, '_blank', 'noopener,noreferrer')
         return
       }
-      if (view.state.readOnly) return
-      event.preventDefault()
       const cell = target.closest<HTMLElement>('[data-offset]')
-      const start = view.posAtDOM(wrap)
-      const anchor = start + Number(cell?.dataset.offset ?? 0)
-      view.dispatch({ selection: { anchor: Math.min(anchor, view.state.doc.length) }, scrollIntoView: true })
-      view.focus()
+      if (placeCursor(view, wrap, Number(cell?.dataset.offset ?? 0))) event.preventDefault()
     })
     return wrap
   }
@@ -222,38 +204,4 @@ function tableWidget(state: EditorState, table: SyntaxNode, from: number, to: nu
   return new TableWidget(state.doc.sliceString(from, to), build)
 }
 
-/** Bloques que pueden contener una tabla; el resto no se recorre por dentro. */
-const CONTAINERS = new Set(['Document', 'Blockquote', 'BulletList', 'OrderedList', 'ListItem'])
-
-function buildTables(state: EditorState): DecorationSet {
-  const doc = state.doc
-  const ranges = state.field(focused) ? state.selection.ranges : []
-  const out: Range<Decoration>[] = []
-  syntaxTree(state).iterate({
-    enter: (ref) => {
-      if (ref.name !== 'Table') return CONTAINERS.has(ref.name)
-      const from = doc.lineAt(ref.from).from
-      const to = doc.lineAt(ref.to).to
-      // Con la selección en sus líneas, se edita como Markdown.
-      if (!ranges.some((r) => r.from <= to && r.to >= from)) {
-        out.push(Decoration.replace({ widget: tableWidget(state, ref.node, from, to), block: true }).range(from, to))
-      }
-      return false
-    },
-  })
-  return Decoration.set(out, true)
-}
-
-const tables = StateField.define<DecorationSet>({
-  create: buildTables,
-  update(value, tr) {
-    const focusChanged = tr.effects.some((e) => e.is(setFocus))
-    if (tr.docChanged || tr.selection || focusChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)) {
-      return buildTables(tr.state)
-    }
-    return value
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
-
-export const tablePreview = [focused, trackFocus, tables]
+export const tablePreview = blockWidgets('Table', (node, state, from, to) => tableWidget(state, node, from, to))

@@ -42,6 +42,8 @@ export interface Me {
   role: 'ADMIN' | 'MEMBER'
 }
 
+export type PhotoNoteStage = 'reading' | 'context' | 'writing' | 'saving'
+
 export class ApiError extends CliError {
   constructor(
     message: string,
@@ -73,17 +75,19 @@ export class WickApi {
     return this.token
   }
 
+  /** `body` va como JSON; un FormData, tal cual (multipart). */
   private async send(method: Method, path: string, body?: unknown): Promise<Response> {
     let res: Response
+    const form = body instanceof FormData
     try {
       res = await fetch(this.server + path, {
         method,
         headers: {
           authorization: `Bearer ${this.token}`,
           'user-agent': `wick-cli/${VERSION}`,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(body === undefined || form ? {} : { 'content-type': 'application/json' }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : form ? body : JSON.stringify(body),
       })
     } catch (err) {
       const cause = (err as { cause?: { code?: string } }).cause?.code
@@ -105,6 +109,53 @@ export class WickApi {
 
   private async json<T>(method: Method, path: string, body?: unknown): Promise<T> {
     return (await (await this.send(method, path, body)).json()) as T
+  }
+
+  /**
+   * Nota desde foto: sube las fotos y sigue el progreso (eventos del servidor)
+   * hasta que la nota está creada.
+   */
+  async photoNote(
+    input: { images: { data: Uint8Array; name: string }[]; workspaceId?: string; research: boolean; instructions?: string },
+    onStage: (stage: PhotoNoteStage, research: boolean) => void,
+  ): Promise<{ document: NoteSummary; researched: boolean }> {
+    const form = new FormData()
+    for (const img of input.images) form.append('images', new Blob([img.data]), img.name)
+    if (input.workspaceId) form.append('workspaceId', input.workspaceId)
+    form.append('research', String(input.research))
+    if (input.instructions) form.append('instructions', input.instructions)
+
+    const res = await this.send('POST', '/api/documents/from-photo', form)
+    const lost = new CliError('Se perdió la conexión con el servidor. Si la nota se llegó a crear, aparecerá en tu carpeta.')
+    if (!res.body) throw lost
+    const decoder = new TextDecoder()
+    let buffer = ''
+    const chunks = async function* (body: ReadableStream<Uint8Array>) {
+      try {
+        for await (const chunk of body) yield chunk
+      } catch {
+        throw lost
+      }
+    }
+    for await (const chunk of chunks(res.body)) {
+      buffer += decoder.decode(chunk as Uint8Array, { stream: true }).replace(/\r\n/g, '\n')
+      for (let i = buffer.indexOf('\n\n'); i >= 0; i = buffer.indexOf('\n\n')) {
+        const block = buffer.slice(0, i)
+        buffer = buffer.slice(i + 2)
+        let event = 'message'
+        let data = ''
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) data += line.slice(5).replace(/^ /, '')
+        }
+        if (!data) continue
+        const payload = JSON.parse(data)
+        if (event === 'stage') onStage(payload.stage, payload.research)
+        else if (event === 'done') return payload
+        else if (event === 'error') throw new ApiError(payload.message ?? 'No se pudo crear la nota', payload.statusCode ?? 500)
+      }
+    }
+    throw lost
   }
 
   async me(): Promise<Me> {

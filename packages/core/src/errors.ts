@@ -5,6 +5,10 @@ export type WickErrorCode =
   | 'FORBIDDEN'
   | 'CONFLICT'
   | 'RATE_LIMITED'
+  /** La petición es correcta, pero su contenido no se puede procesar (p. ej. una foto que no está escrita a mano). */
+  | 'UNPROCESSABLE'
+  /** Un servicio necesario no está disponible o no está configurado (p. ej. la IA). */
+  | 'UNAVAILABLE'
 
 /** Errores de negocio. Cada interfaz (API, CLI, MCP) los traduce a su propio formato. */
 export class WickError extends Error {
@@ -55,5 +59,17 @@ export class RateLimitedError extends WickError {
     super('Demasiados intentos. Espera unos minutos antes de volver a probar.', 'RATE_LIMITED', {
       retryAfterSeconds,
     })
+  }
+}
+
+export class UnprocessableError extends WickError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'UNPROCESSABLE', details)
+  }
+}
+
+export class UnavailableError extends WickError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'UNAVAILABLE', details)
   }
 }

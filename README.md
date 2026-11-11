@@ -238,6 +238,7 @@ wick notes replace red "DNS: 1.1.1.1" "DNS: 9.9.9.9"   # cambia un fragmento sin
 wick notes export --all -o ./copia      # un .md por nota, con `# Título`
 wick notes export backups --pdf         # la nota en PDF (también con --all)
 wick notes import *.md
+wick notes from-photo pag1.jpg pag2.jpg -i "para el examen"   # nota desde fotos (IA, si está activada)
 wick notes history backups              # versiones; con un id de versión, su contenido
 wick notes restore backups cmx1…        # lo actual queda en el historial
 ```
@@ -291,6 +292,43 @@ abierta, **sin pisar lo que esa persona esté escribiendo**:
   mientras tanto (como dos personas escribiendo a la vez), en lugar de
   borrarlo. Si escriben en el mismo punto, el texto de la persona queda delante.
 
+### Nota desde foto (IA, opcional)
+
+Convierte fotos de **apuntes escritos a mano** (cuaderno, hojas, pizarrón) en una
+nota limpia y estructurada. Viene **desactivada**: wick funciona igual sin IA.
+
+- **Activarla:** menú de usuario → *Inteligencia artificial* (solo
+  administradores). Ahí se elige el proveedor (en esta versión, Anthropic), se
+  guarda la clave de API (botón *Probar conexión*), el modelo
+  (`claude-opus-5-5` por defecto), si se permite investigar en internet, las
+  búsquedas máximas por nota y cuántas notas con IA puede crear cada usuario al
+  día. Los cambios se aplican al momento.
+- **Usarla:** botón de la cámara junto a *Nueva nota* (o
+  `wick notes from-photo`). De 1 a 4 fotos del mismo tema forman una nota; en
+  el celular se pueden tomar ahí mismo, también por HTTP. Opcionalmente:
+  investigar en internet e indicaciones («es para el examen»).
+- **Qué hace:** comprueba que las fotos estén escritas a mano (si una no lo está,
+  avisa y no crea nada), las transcribe sin inventar (`[ilegible]` donde no se
+  lee), busca notas relacionadas tuyas, investiga si se lo pides y redacta la
+  nota. Lo que añade o corrige la IA va marcado (`> **Ampliación (IA):**`,
+  `> **Corrección (IA):**`) y con su fuente; añade diagramas Mermaid cuando
+  ayudan. La nota queda en la raíz de una carpeta con tu nombre en el espacio
+  actual (se crea si no existe; si la renombras o la mueves, se sigue usando).
+- **Privacidad:** antes de enviar, un aviso dice a qué proveedor van las fotos.
+  Se envían las fotos, tus indicaciones y el título y un fragmento de hasta 5
+  notas relacionadas. Las fotos no se guardan en ningún sitio (ni disco, ni base
+  de datos, ni logs).
+- **Clave de API:** se guarda cifrada (AES-256-GCM) con una clave maestra que
+  sale de `WICK_SECRET_KEY` o, si no está definida, de `DATABASE_URL`. Si cambia,
+  hay que volver a escribir la clave en la web.
+- **Costo y límites:** del orden de 0,20–0,50 USD por nota con investigación.
+  Cada uso queda registrado (tokens y búsquedas, sin contenido). El límite diario
+  cuenta las notas creadas; además, cada usuario tiene como mucho el triple de
+  intentos al día (rechazados o fallidos incluidos). Fotos: JPEG, PNG o WebP, hasta
+  5 MB cada una (la web las reduce sola; con la CLI, redúcelas antes si pesan más).
+- **Seguridad:** las notas relacionadas salen solo del espacio donde se crea la
+  nota, y las imágenes que proponga el modelo quedan como enlaces (no se cargan).
+
 ### Editor
 
 Se escribe Markdown con vista previa en vivo (CodeMirror 6):
@@ -314,6 +352,11 @@ títulos de una línea se ven con su tamaño mientras se escriben.
   con `|--|------|` la segunda columna ocupa el triple que la primera y la tabla
   todo el ancho; con los mismos guiones en todas, se ajusta al contenido. El PDF
   respeta los mismos anchos.
+- Diagramas: un bloque ` ```mermaid ` se dibuja como diagrama
+  ([Mermaid](https://mermaid.js.org): flujo, secuencia, mapa mental…); con el
+  cursor dentro se edita su código. Si tiene un error, se indica en qué línea.
+  La librería solo se descarga al abrir una nota con diagramas. En el PDF, por
+  ahora, el diagrama sale como su código.
 - Ayuda: `?` muestra todos los atajos de teclado; el menú «…» de la nota abre la
   guía de Markdown (con buscador), que se puede tener abierta mientras se escribe.
 

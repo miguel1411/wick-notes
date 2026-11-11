@@ -10,6 +10,7 @@ import { EditorSelection, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder, type Command } from '@codemirror/view'
 import { yUndoManagerKeymap } from 'y-codemirror.next'
 import { linkClick, livePreview } from './live-preview'
+import { mermaidPreview } from './mermaid-preview'
 import { tablePreview } from './table-preview'
 import { wickHighlight, wickTheme } from './theme'
 
@@ -73,6 +74,7 @@ export function editorExtensions(options: { readonly: boolean }): Extension[] {
     syntaxHighlighting(wickHighlight),
     livePreview,
     tablePreview,
+    mermaidPreview,
     linkClick,
     pasteURLAsLink,
     EditorView.lineWrapping,
