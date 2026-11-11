@@ -60,6 +60,7 @@ const groups: { title: string; entries: Entry[] }[] = [
     entries: [
       { title: 'Bloque de código', syntax: '```bash\ndocker compose ps\n```', description: 'Indica el lenguaje tras las comillas para colorear el código.', keywords: 'code block fence snippet bash js' },
       { title: 'Tabla', syntax: '| Nombre | Puerto |\n| --- | ---: |\n| web | 3120 |', description: 'La segunda fila separa la cabecera. Con : se alinea (---: a la derecha, :---: al centro).', keywords: 'table columnas filas pipe' },
+      { title: 'Ancho de las columnas', syntax: '| Servicio | Notas |\n| -- | ------ |\n| web | Nuxt en el puerto 3120 |', description: 'Con distinto número de guiones, cada columna ocupa esa proporción del ancho (aquí 1 a 3). Con los mismos guiones, se ajustan al contenido.', keywords: 'table tabla ancho anchura width columna tamaño guiones' },
     ],
   },
 ]

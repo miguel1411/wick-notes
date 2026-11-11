@@ -10,6 +10,8 @@
  *   selección toca ese elemento.
  * - Imágenes (`![texto](url)`): se ve la imagen; si la selección la toca, aparece
  *   también el Markdown encima para editarlo.
+ * - Tablas: se dibuja la tabla; si la selección toca sus líneas, el Markdown
+ *   (table-preview.ts).
  * - Sin foco (o para un lector) no hay nada «activo»: todo se ve con formato.
  *
  * Nada de esto cambia el texto: la nota es siempre el Markdown tal cual.
@@ -337,7 +339,7 @@ export const livePreview = ViewPlugin.fromClass(
 )
 
 /** Solo se abren enlaces web o de correo (nunca `javascript:` y similares). */
-function safeUrl(raw: string): string | null {
+export function safeUrl(raw: string): string | null {
   const url = raw.trim().replace(/^<|>$/g, '')
   return /^(https?:|mailto:)/i.test(url) ? url : /^www\./i.test(url) ? `https://${url}` : null
 }

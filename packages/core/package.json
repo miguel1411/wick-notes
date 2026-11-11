@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./auth/schemas": "./src/auth/schemas.ts"
+    "./auth/schemas": "./src/auth/schemas.ts",
+    "./markdown-table": "./src/markdown-table.ts"
   },
   "scripts": {
     "test": "vitest run",

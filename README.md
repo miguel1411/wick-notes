@@ -308,10 +308,16 @@ títulos de una línea se ven con su tamaño mientras se escriben.
 - Imágenes `![descripción](https://…)`: se ven en la nota; con el cursor encima
   reaparece su Markdown. Solo se cargan URLs `http(s)`, sin enviar la dirección de
   la nota (`Referer`). No se suben imágenes: se enlazan las que ya están en la web.
+- Tablas: se ven como tabla (con la alineación de cada columna); un clic en una
+  celda pone ahí el cursor y la tabla vuelve a su Markdown para editarla. El
+  ancho de las columnas sale de los guiones de la segunda fila (como en Pandoc):
+  con `|--|------|` la segunda columna ocupa el triple que la primera y la tabla
+  todo el ancho; con los mismos guiones en todas, se ajusta al contenido. El PDF
+  respeta los mismos anchos.
 - Ayuda: `?` muestra todos los atajos de teclado; el menú «…» de la nota abre la
   guía de Markdown (con buscador), que se puede tener abierta mientras se escribe.
 
-Tablas y fórmulas se ven, por ahora, como su Markdown.
+Las fórmulas se ven, por ahora, como su Markdown.
 
 ### Markdown
 

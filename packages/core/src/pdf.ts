@@ -7,6 +7,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
 import { DEFAULT_TITLE } from './schemas'
+import { parseTableDelimiter } from './markdown-table'
 import { markdownFilename } from './markdown-title'
 
 /**
@@ -68,9 +69,12 @@ class Converter {
   private readonly footnotes = new Map<string, FootnoteDefinition>()
   private readonly activeFootnotes = new Set<string>()
 
+  private source = ''
+
   constructor(private readonly baseUrl: string | undefined) {}
 
   convert(markdown: string): string {
+    this.source = markdown
     const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })
     this.collect(tree)
     return this.blocks(tree.children)
@@ -145,13 +149,19 @@ class Converter {
   private table(node: Table): string {
     const columns = Math.max(1, ...node.children.map((row) => row.children.length))
     const align = Array.from({ length: columns }, (_, i) => ALIGN[node.align?.[i] ?? 'left'] ?? 'left')
+    // Anchos según la fila separadora (`|---|------|`), que el árbol no guarda: se lee del texto.
+    const start = node.position?.start.offset
+    const end = node.position?.end.offset
+    const delimiter = start !== undefined && end !== undefined ? this.source.slice(start, end).split('\n')[1] : undefined
+    const widths = delimiter ? parseTableDelimiter(delimiter).widths : null
     const rows = node.children.map((row) => {
       const cells = row.children.map((cell) => `[${this.inline(cell.children)}]`)
       while (cells.length < columns) cells.push('[]')
       return cells.slice(0, columns).join(', ')
     })
     const [header, ...body] = rows
-    const parts = [`columns: ${columns}`, `align: (${align.join(', ')},)`, `table.header(${header})`, ...body]
+    const cols = widths?.length === columns ? `(${widths.map((w) => `${w}fr`).join(', ')})` : `${columns}`
+    const parts = [`columns: ${cols}`, `align: (${align.join(', ')},)`, `table.header(${header})`, ...body]
     return `#table(${parts.join(', ')})`
   }
 

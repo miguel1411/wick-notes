@@ -90,6 +90,24 @@ export const wickTheme = EditorView.theme({
     borderRadius: '6px',
     padding: '0.2em 0.6em',
   },
+  // Tablas dibujadas: con scroll lateral si no caben.
+  '.cm-md-table-widget': { overflowX: 'auto', margin: '0.5em 0' },
+  '.cm-md-table-widget table': { borderCollapse: 'collapse', fontSize: '0.95em', lineHeight: '1.5' },
+  // Con anchos en la fila separadora (`|---|------|`): todo el ancho, repartido.
+  '.cm-md-table-widget table.cm-md-table-fixed': { width: '100%', tableLayout: 'fixed', overflowWrap: 'anywhere' },
+  '.cm-md-table-widget th, .cm-md-table-widget td': {
+    border: '1px solid var(--ui-border)',
+    padding: '0.35em 0.75em',
+    textAlign: 'left',
+    verticalAlign: 'top',
+    cursor: 'text',
+  },
+  '.cm-md-table-widget th': {
+    backgroundColor: 'var(--ui-bg-muted)',
+    color: 'var(--ui-text-highlighted)',
+    fontWeight: '600',
+  },
+  '.cm-md-table-widget [data-href]': { cursor: 'pointer' },
   '.cm-md-hr': {
     display: 'inline-block',
     width: '100%',

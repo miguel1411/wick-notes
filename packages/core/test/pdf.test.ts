@@ -37,6 +37,15 @@ describe('Markdown → Typst', () => {
     expect(markdownToTypst('> cita')).toBe('#quote(block: true)[#"cita";]')
   })
 
+  it('reparte el ancho de las columnas según la fila separadora', () => {
+    expect(markdownToTypst('| a | b |\n|--|------|\n| 1 | 2 |')).toBe(
+      '#table(columns: (2fr, 6fr), align: (left, left,), table.header([#"a";], [#"b";]), [#"1";], [#"2";])',
+    )
+    expect(markdownToTypst('> | a | b |\n> |:-|---:|\n> | 1 | 2 |')).toBe(
+      '#quote(block: true)[#table(columns: (1fr, 3fr), align: (left, right,), table.header([#"a";], [#"b";]), [#"1";], [#"2";])]',
+    )
+  })
+
   it('omite comentarios HTML y no entra en bucle con notas al pie circulares', () => {
     expect(markdownToTypst('<!-- oculto -->')).toBe('')
     expect(markdownToTypst('a[^1]\n\n[^1]: b[^1]')).toBe('#"a";#footnote[#"b";#"[^1]";]')
